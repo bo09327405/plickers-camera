@@ -763,7 +763,7 @@ function pollRoster(){
     if(changed){ renderGrid(); renderTally(); renderStrip(); }
   }).catch(function(){ pollBusy=false; }); // 背景同步失敗就靜靜跳過，不要用 toast 打擾上課
 }
-setInterval(pollRoster, 6000);
+setInterval(pollRoster, 500);
 document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollRoster(); });
 
 function renderGrid(flashSeat){
