@@ -107,10 +107,8 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
    linear-gradient(var(--c),var(--c)) right bottom/3px 14px no-repeat}
 .seat::after{transform:scale(-1,1)}
 .seat .no{font-family:var(--num);font-size:34px;font-weight:700;line-height:1}
-.seat .topline{display:flex;align-items:baseline;gap:7px;min-width:0}
 .seat .nm{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seat .mk{position:absolute;top:10px;right:12px;font-family:var(--num);font-size:18px;font-weight:900}
-.seat .bonus{background:rgba(0,0,0,.26);border-radius:999px;padding:1px 8px 2px;font-family:var(--num);font-size:14px;font-weight:700;line-height:1.5;white-space:nowrap}
 .seat[data-bonus="mode"]{cursor:pointer}
 .seat[data-s="1"]{background:var(--ontime);color:#fff;--c:#fff}
 .seat[data-s="L"]{background:var(--late);color:#2A1E00;--c:#2A1E00}
@@ -230,7 +228,7 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
 <main class="setup" id="setup">
   <section class="panel" aria-label="點名設定">
     <div class="brand">
-      <h1>上課點名</h1>
+      <h1>上場點名</h1>
       <p>舉起卡片，就位。</p>
     </div>
     <p class="hint" id="demoBadge" style="display:none;margin-top:-18px;color:#B07A00;font-weight:700">⚠ 示範模式：尚未連接試算表，見 SETUP.md</p>
@@ -590,7 +588,7 @@ function buildBody_(fn, args){
 }
 function call(fn){
   var args = Array.prototype.slice.call(arguments,1);
-  if (IS_DEMO) return Promise.resolve(Demo[fn].apply(Demo,args));
+  if (IS_DEMO) { try { return Promise.resolve(Demo[fn].apply(Demo,args)); } catch(e){ return Promise.reject(e); } }
   var body = buildBody_(fn, args);
   // Content-Type 用 text/plain，避免瀏覽器送出 CORS 預檢請求（Apps Script 不處理 OPTIONS）
   return fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(body) })
@@ -609,8 +607,8 @@ function call(fn){
 }
 var Demo = (function(){
   var names='伍少宇 朱維軒 余朔廷 吳宇軒 李翔方 孔令延 林子皓 林君謙 林嵩明 林震河 侯元喆 洪予昕 洪健恩 徐郡森 張容豪 許博勛 陳慶恩 湯竤翔 甯家涵 黃冠諺 黃威凱 廖俞凱 趙煦楷 鄧翊泓 鄭茗鈞 鄭博允 蘇宥睿 李芷妤 邱綺莛 殷元菲 陳采妤 廖珈蒂 謝宇彤'.split(' ');
-  var store={}, bonus={};
-  function roster(sheet){ return names.map(function(n,i){ var seat=i+1; return {seat:seat,name:n,row:i+3,mark:store[sheet+(i+3)]||'',bonus:bonus[sheet+':'+seat]||0}; }); }
+  var store={};
+  function roster(sheet){ return names.map(function(n,i){ return {seat:i+1,name:n,row:i+3,mark:store[sheet+(i+3)]||''}; }); }
   return {
     getBootstrap:function(){ return {classes:[{sheet:'311',label:'311C',count:33},{sheet:'301',label:'301A',count:35},{sheet:'304',label:'304 Ｂ',count:39},{sheet:'306',label:'306 Ｂ',count:42}],settings:null}; },
     saveSettings:function(){ return true; },
@@ -618,7 +616,13 @@ var Demo = (function(){
     startSession:function(s,iso){ var r=this.getRoster(s,iso); r.colLetter='E'; return r; },
     recordBatch:function(s,iso,recs,ow){ return {results:recs.map(function(r){ var k=s+r.row; if(store[k]&&!ow) return {row:r.row,ok:true,kept:true,mark:store[k]}; store[k]=r.status; return {row:r.row,ok:true,mark:r.status}; })}; },
     markAbsent:function(s,iso,rows){ return this.recordBatch(s,iso,rows.map(function(r){return {row:r.row,seat:r.seat,status:'X'};}),false); },
-    adjustBonus:function(s,iso,row,seat,delta){ var k=s+':'+seat; bonus[k]=(bonus[k]||0)+delta; return {total:bonus[k],today:bonus[k]}; }
+    adjustBonus:function(s,iso,row,seat,delta){
+      var k=s+row; var cur=store[k];
+      if(cur && !/^-?\d+$/.test(cur)) throw new Error('這一格目前是「'+cur+'」，不能疊加分數；請先改成準時或清除。');
+      var next=(cur?parseInt(cur,10):0)+delta;
+      store[k]=String(next);
+      return {value:next};
+    }
   };
 })();
 
@@ -626,7 +630,6 @@ var Demo = (function(){
 var S = {
   classes:[], sheet:null, roster:null, iso:'', late:'08:10', absentAfter:20, cam:'env',
   marks:{},        // seat → { status, time, pending }
-  bonus:{},        // seat → 今日已加減分數
   queue:[], inflight:false, running:false, sound:true,
   instant:false,   // 即時輸入：每次刷卡立即寫入，不等批次
   bonusMode:false  // 手動加分：點座位改為顯示加減分按鈕
@@ -639,10 +642,17 @@ function toMin(t){ var p=t.split(':'); return (+p[0])*60+(+p[1]); }
 function nowStr(){ var d=new Date(); return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
 var LEAVE=['S','F','P','M','H'];
 var STATUS_NAME={'1':'準時','L':'遲到','x':'缺席','X':'未到','S':'病假','F':'喪假','P':'公假','M':'生理假','H':'心理健康假'};
-function statusColor(s){ return s==='1'?'#14A06A':s==='L'?'#E5A000':s==='x'?'#D6403A':s==='X'?'#78808E':LEAVE.indexOf(s)>=0?'#6C5CC7':'#AEB4BF'; }
-function statusName(s){ if(!s) return '尚未點名'; return STATUS_NAME[s] || ('已有 '+s); }
+var NUM_RE=/^-?\d+$/; // 準時那格本來就是數字 1，手動加分會疊加成 2、3…，一樣算「準時」
+function isNum(s){ return NUM_RE.test(s); }
+function statusColor(s){ return s==='L'?'#E5A000':s==='x'?'#D6403A':s==='X'?'#78808E':LEAVE.indexOf(s)>=0?'#6C5CC7':isNum(s)?'#14A06A':'#AEB4BF'; }
+function statusName(s){
+  if(!s) return '尚未點名';
+  if(isNum(s)) return s==='1' ? '準時' : '準時（'+s+' 分）';
+  return STATUS_NAME[s] || ('已有 '+s);
+}
 function kind(mark){
-  if(mark==='1'||mark==='L'||mark==='x'||mark==='X') return mark;
+  if(mark==='L'||mark==='x'||mark==='X') return mark;
+  if(isNum(mark)) return '1';
   if(LEAVE.indexOf(mark)>=0) return 'leave';
   return mark ? 'other' : '';
 }
@@ -675,11 +685,8 @@ function loadRoster(){
   if(!S.sheet) return;
   $('go').disabled=true; $('statusLine').textContent='讀取名單中…';
   call('getRoster', S.sheet, S.iso).then(function(r){
-    S.roster=r; S.marks={}; S.bonus={};
-    r.students.forEach(function(st){
-      if(st.mark) S.marks[st.seat]={status:st.mark,time:'',pending:false,pre:true};
-      if(st.bonus) S.bonus[st.seat]=st.bonus;
-    });
+    S.roster=r; S.marks={};
+    r.students.forEach(function(st){ if(st.mark) S.marks[st.seat]={status:st.mark,time:'',pending:false,pre:true}; });
     $('go').disabled=false;
     $('statusLine').textContent = r.dateCol ? '寫入試算表「'+r.sheet+'」的 '+r.dateKey+' 欄' : '試算表還沒有 '+r.dateKey+' 這一欄，開始點名時會自動新增';
     renderGrid(); renderTally();
@@ -693,16 +700,15 @@ function renderGrid(flashSeat){
   if(!r.students.length){ g.innerHTML='<div class="empty">這個工作表沒有學生。B 欄格式需為「座號＋姓名」，例如 01王小明。</div>'; return; }
   g.innerHTML='';
   r.students.forEach(function(st){
-    var m=S.marks[st.seat], k=m?kind(m.status):'', bonus=S.bonus[st.seat]||0;
+    var m=S.marks[st.seat], k=m?kind(m.status):'';
     var b=document.createElement('button'); b.type='button'; b.className='seat'+(flashSeat===st.seat?' flash':'');
     if(k) b.dataset.s=k;
     if(S.bonusMode) b.dataset.bonus='mode';
-    b.innerHTML='<span class="topline"><span class="no"></span>'+(bonus?'<span class="bonus"></span>':'')+'</span><span class="nm"></span>'+(m?'<span class="mk"></span>':'');
+    b.innerHTML='<span class="no"></span><span class="nm"></span>'+(m?'<span class="mk"></span>':'');
     b.querySelector('.no').textContent=pad(st.seat);
     b.querySelector('.nm').textContent=st.name;
     if(m) b.querySelector('.mk').textContent=m.status;
-    if(bonus) b.querySelector('.bonus').textContent=(bonus>0?'+':'')+bonus;
-    b.setAttribute('aria-label', pad(st.seat)+' '+st.name+'，'+statusName(m&&m.status)+(bonus?'，今日加分 '+bonus:''));
+    b.setAttribute('aria-label', pad(st.seat)+' '+st.name+'，'+statusName(m&&m.status));
     b.onclick=function(ev){ if(S.bonusMode) openBonus(ev, st); else openPop(ev, st); };
     g.appendChild(b);
   });
@@ -714,7 +720,7 @@ function counts(){
     var m=S.marks[st.seat];
     if(!m){ c.none++; return; }
     var s=m.status;
-    if(s==='1') c['1']++;
+    if(isNum(s)) c['1']++;
     else if(s==='L') c.L++;
     else if(s==='x') c.x++;
     else if(s==='X') c.X++;
@@ -773,29 +779,46 @@ function manualSet(st, status){
   });
 }
 
-/* 手動加分：貼在座位方塊上的加減分控制，可連續點按 */
+/* 手動加分：貼在座位方塊上的加減分控制，直接疊加在該學生當天那一格的數字上 */
 var bonusEl=null, bonusSeat=null;
 function closeBonus(){ if(bonusEl){ bonusEl.remove(); bonusEl=null; bonusSeat=null; } }
+function curScore(st){
+  var m=S.marks[st.seat];
+  if(!m || m.status==='') return 0;
+  if(isNum(m.status)) return parseInt(m.status,10);
+  return null; // 目前是文字狀態（L／x／X／假別），不能疊加分數
+}
 function openBonus(ev, st){
   closePop();
   if(bonusSeat===st.seat){ closeBonus(); return; }
+  var cur=curScore(st);
+  if(cur===null){
+    toast(pad(st.seat)+' '+st.name+' 目前是「'+statusName(S.marks[st.seat].status)+'」，不能疊加分數；請先在點名修改選單改成準時或清除。', 4500);
+    return;
+  }
   closeBonus(); ev.stopPropagation();
   var rc=ev.currentTarget.getBoundingClientRect();
   var p=document.createElement('div'); p.className='bonuspop';
   p.style.left=rc.left+'px'; p.style.top=rc.top+'px'; p.style.width=rc.width+'px'; p.style.height=rc.height+'px';
   var minus=document.createElement('button'); minus.type='button'; minus.textContent='－'; minus.setAttribute('aria-label','扣一分');
-  var val=document.createElement('div'); val.className='val'; val.innerHTML='<b></b><small>今日加分</small>';
+  var val=document.createElement('div'); val.className='val'; val.innerHTML='<b></b><small>當天分數</small>';
   var plus=document.createElement('button'); plus.type='button'; plus.textContent='＋'; plus.setAttribute('aria-label','加一分');
-  function render(){ val.querySelector('b').textContent=S.bonus[st.seat]||0; }
+  function render(){ val.querySelector('b').textContent=cur; }
   render();
   function adjust(delta){
-    var prev=S.bonus[st.seat]||0;
-    S.bonus[st.seat]=prev+delta; render(); renderGrid();
+    var prevMark=S.marks[st.seat], prevCur=cur;
+    cur+=delta;
+    S.marks[st.seat]={status:String(cur),time:(prevMark&&prevMark.time)||nowStr(),pending:true};
+    render(); renderGrid();
     if(delta>0) beep('1'); else beep('L');
     call('adjustBonus', S.sheet, S.iso, st.row, st.seat, delta).then(function(r){
-      S.bonus[st.seat]=r.today; render(); renderGrid();
+      cur=r.value;
+      S.marks[st.seat]={status:String(r.value),time:(prevMark&&prevMark.time)||nowStr(),pending:false};
+      render(); renderGrid(); renderTally();
     }).catch(function(e){
-      S.bonus[st.seat]=prev; render(); renderGrid();
+      cur=prevCur;
+      if(prevMark) S.marks[st.seat]=prevMark; else delete S.marks[st.seat];
+      render(); renderGrid(); renderTally();
       toast('加分失敗：'+(e&&e.message||e), 4000);
     });
   }
