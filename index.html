@@ -516,14 +516,25 @@ var $ = function(id){ return document.getElementById(id); };
 var HAS_GAS = typeof google !== 'undefined' && google.script && google.script.run;
 
 /* ---------- 伺服器呼叫（Promise 化；本機預覽時使用示範資料） ---------- */
-function call(fn){
-  var args = Array.prototype.slice.call(arguments,1);
-  return new Promise(function(res, rej){
-    if (!HAS_GAS) return res(Demo[fn].apply(Demo,args));
-    var r = google.script.run.withSuccessHandler(res).withFailureHandler(rej);
-    r[fn].apply(r,args);
-  });
+// 替換成你發布 GAS Web App 後取得的網址
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxgOCnwLhR7FeYgv8Nn7GhSNBApONsGTQAYW-PYRNgz_dpESSYRVB4RCP3fXSONTQ_V/exec';
+
+function call(action, ...args) {
+  return fetch(GAS_URL, {
+    method: 'POST',
+    headers: {
+      // 避免 GAS CORS 預檢限制，使用 text/plain 帶 JSON
+      'Content-Type': 'text/plain;charset=utf-8'
+    },
+    body: JSON.stringify({
+      action: action,
+      args: args
+    })
+  })
+  .then(response => response.json());
 }
+
+
 var Demo = (function(){
   var names='伍少宇 朱維軒 余朔廷 吳宇軒 李翔方 孔令延 林子皓 林君謙 林嵩明 林震河 侯元喆 洪予昕 洪健恩 徐郡森 張容豪 許博勛 陳慶恩 湯竤翔 甯家涵 黃冠諺 黃威凱 廖俞凱 趙煦楷 鄧翊泓 鄭茗鈞 鄭博允 蘇宥睿 李芷妤 邱綺莛 殷元菲 陳采妤 廖珈蒂 謝宇彤'.split(' ');
   var store={};
