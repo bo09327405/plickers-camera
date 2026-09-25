@@ -44,8 +44,17 @@ button,input,select{font:inherit;color:inherit}
 #gateErr{color:var(--absent);min-height:1.4em}
 
 /* ============ 設定頁 ============ */
-.setup{min-height:100%;display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:0}
-.panel{padding:calc(40px + var(--safe-t)) 40px 40px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:28px;position:relative}
+.setup{min-height:100%;display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:0;transition:grid-template-columns .22s ease}
+.setup.collapsed{grid-template-columns:64px 1fr}
+.panel{padding:calc(40px + var(--safe-t)) 40px 40px;background:var(--paper);border-right:1px solid var(--line);position:relative}
+.panel-body{display:flex;flex-direction:column;gap:28px;min-width:0}
+.panel-toggle{appearance:none;border:1.5px solid var(--line);background:#fff;color:var(--ink-2);border-radius:7px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;position:absolute;top:calc(40px + var(--safe-t));right:-17px;z-index:2;box-shadow:0 2px 6px rgba(28,34,48,.08)}
+.panel-toggle:hover{color:var(--ink);border-color:var(--ink-2)}
+.panel-toggle svg{width:18px;height:18px;transition:transform .22s ease}
+.setup.collapsed .panel{padding:calc(40px + var(--safe-t)) 0 40px}
+.setup.collapsed .panel-body{display:none}
+.setup.collapsed .panel-toggle{position:static;margin:0 auto}
+.setup.collapsed .panel-toggle svg{transform:rotate(180deg)}
 .brand{display:flex;align-items:flex-end;gap:14px}
 .brand h1{margin:0;font-size:44px;line-height:1;font-weight:900;letter-spacing:.02em;position:relative;padding-bottom:10px}
 .brand h1::after{content:"";position:absolute;left:-6px;right:-10px;bottom:0;height:12px;background:var(--spike);transform:rotate(-1.6deg);z-index:-1;border-radius:1px;
@@ -218,6 +227,9 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
 
 @media (max-width: 860px){
   .setup{grid-template-columns:1fr}
+  .setup.collapsed{grid-template-columns:1fr}
+  .setup.collapsed .panel-body{display:flex}
+  .panel-toggle{display:none}
   .panel{border-right:0;border-bottom:1px solid var(--line);padding:calc(28px + var(--safe-t)) 20px 28px}
   .brand h1{font-size:36px}
   .stage{padding:28px 20px 40px}
@@ -249,6 +261,10 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
 
 <main class="setup" id="setup">
   <section class="panel" aria-label="點名設定">
+    <button type="button" class="panel-toggle" id="panelToggle" aria-label="收合設定欄" aria-expanded="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="panel-body" id="panelBody">
     <div class="brand">
       <h1>上課點名</h1>
       <p>舉起卡片，就位。</p>
@@ -310,6 +326,7 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
 
     <button class="go" id="go" disabled>開始點名</button>
     <p class="status-line" id="statusLine"></p>
+    </div>
   </section>
 
   <section class="stage" aria-label="座位表">
@@ -715,6 +732,40 @@ function loadRoster(){
     renderGrid(); renderTally();
   }).catch(function(e){ $('statusLine').textContent='讀取失敗：'+(e&&e.message||e); });
 }
+
+/* 跨裝置同步：背景定時重讀試算表，把「別的裝置剛剛加的分」「別的裝置剛刷的卡」同步過來。
+   刷新時會跳過本機正在寫入中（pending／還在批次佇列裡）的座位，避免蓋掉還沒送出的資料，
+   也會跳過目前正打開加減分視窗的那個座位，避免手指按到一半數字被蓋掉。 */
+var pollBusy=false;
+function pollRoster(){
+  if(IS_DEMO || pollBusy || document.hidden || !S.pw || !S.sheet || !S.roster) return;
+  pollBusy=true;
+  call('getRoster', S.sheet, S.iso).then(function(r){
+    pollBusy=false;
+    if(!S.roster || S.roster.sheet!==r.sheet || S.roster.dateKey!==r.dateKey) return; // 使用者已經切走了，這次結果作廢
+    var changed=false;
+    var pendingSeats={};
+    S.queue.forEach(function(q){ pendingSeats[q.seat]=true; });
+    r.students.forEach(function(st){
+      if(!pendingSeats[st.seat] && !(S.marks[st.seat]&&S.marks[st.seat].pending)){
+        var newMark=st.mark||'', cur=S.marks[st.seat];
+        if(newMark !== (cur?cur.status:'')){
+          if(newMark) S.marks[st.seat]={status:newMark,time:(cur&&cur.time)||'',pending:false,pre:true};
+          else delete S.marks[st.seat];
+          changed=true;
+        }
+      }
+      if(bonusSeat!==st.seat){
+        var newBonus=st.bonus||0;
+        if((S.bonus[st.seat]||0)!==newBonus){ S.bonus[st.seat]=newBonus; changed=true; }
+      }
+    });
+    if(changed){ renderGrid(); renderTally(); renderStrip(); }
+  }).catch(function(){ pollBusy=false; }); // 背景同步失敗就靜靜跳過，不要用 toast 打擾上課
+}
+setInterval(pollRoster, 6000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollRoster(); });
+
 function renderGrid(flashSeat){
   var g=$('grid'), r=S.roster;
   $('stTitle').firstChild.nodeValue = r ? r.sheet : '—';
@@ -1136,6 +1187,12 @@ $('late').onchange=function(){ S.late=this.value||'08:10'; renderRule(); persist
 $('absMinus').onclick=function(){ S.absentAfter=Math.max(0,S.absentAfter-5); renderRule(); persist(); };
 $('absPlus').onclick=function(){ S.absentAfter=Math.min(240,S.absentAfter+5); renderRule(); persist(); };
 $('camSel').onchange=function(){ S.cam=this.value; persist(); };
+$('panelToggle').onclick=function(){
+  var collapsed=$('setup').classList.toggle('collapsed');
+  this.setAttribute('aria-expanded', String(!collapsed));
+  try{ localStorage.setItem('rollcall_panel', collapsed?'1':'0'); }catch(e){}
+};
+try{ if(localStorage.getItem('rollcall_panel')==='1'){ $('setup').classList.add('collapsed'); $('panelToggle').setAttribute('aria-expanded','false'); } }catch(e){}
 $('instantSwitch').onclick=function(){ S.instant=!S.instant; this.setAttribute('aria-checked',S.instant); persist(); };
 $('bonusSwitch').onclick=function(){ S.bonusMode=!S.bonusMode; this.setAttribute('aria-checked',S.bonusMode); closePop(); closeBonus(); renderGrid(); persist(); };
 
