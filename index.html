@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plickers 圖卡掃描器</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; background: #f4f6f9; margin: 0; padding: 20px; }
+    h1 { color: #333; font-size: 24px; }
+    #video-container { position: relative; display: inline-block; width: 100%; max-width: 500px; background: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+    video { width: 100%; display: block; }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    #status-box { margin-top: 15px; padding: 12px; background: white; border-radius: 8px; max-width: 500px; margin-left: auto; margin-right: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .status-text { font-size: 14px; color: #666; }
+    .scan-result { font-size: 18px; font-weight: bold; color: #2ecc71; margin-top: 5px; }
+  </style>
+  <!-- 引入開源的圖卡辨識技術 (ArUco) -->
+  <script src="https://jsdelivr.net"></script>
+  <script src="https://rawgit.com"></script>
+  <script src="https://rawgit.com"></script>
+</head>
+<body>
+
+  <h1>Plickers 即時圖卡掃描</h1>
+  
+  <div id="video-container">
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div id="status-box">
+    <div id="log" class="status-text">正在請求相機權限...</div>
+    <div id="latest-scan" class="scan-result"></div>
+  </div>
+
+  <script>
+    // ⚠️ 請把下方這行引號內的網址，替換成你在第一階段步驟3複製的 Google /exec 網址 ⚠️
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwNclICWR3iVX4cd4Osbdk-X2rcrcvQ97qbAZNVL06V1H8xoNncMBaVe3JUztVJctUK/exec";
+
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    let detector;
+
+    async function initCamera() {
+      try {
+        // 請求後鏡頭 (environment)
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = stream;
+        detector = new AR.Detector();
+        document.getElementById('log').innerText = "📷 相機已啟動！請將 ArUco 圖卡對準鏡頭。";
+        
+        video.addEventListener('play', () => {
+          // 調整畫布大小與影像同步
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          requestAnimationFrame(tick);
+        });
+      } catch (err) {
+        document.getElementById('log').innerText = "❌ 相機啟動失敗，請確保已允許相機權限。";
+        console.error(err);
+      }
+    }
+
+    function tick() {
+      if (video.readyState === video.HAVE_CURRENT_DATA) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let markers = detector.detect(imageData);
+        
+        // 清除舊的綠框
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (markers.length > 0) {
+          processMarkers(markers);
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function processMarkers(markers) {
+      markers.forEach(marker => {
+        // 在畫面上畫出圖卡綠色邊框
+        ctx.strokeStyle = "#2ecc71";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        marker.corners.forEach((corner, idx) => {
+          if (idx === 0) ctx.moveTo(corner.x, corner.y);
+          else ctx.lineTo(corner.x, corner.y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+
+        // 簡易演算法判斷圖卡旋轉方向 (辨識答案 A, B, C, D)
+        let angle = Math.atan2(marker.corners[1].y - marker.corners[0].y, marker.corners[1].x - marker.corners[0].x) * 180 / Math.PI;
+        let answer = "A";
+        if (angle > -45 && angle <= 45) answer = "A";
+        else if (angle > 45 && angle <= 135) answer = "B";
+        else if (angle > 135 || angle <= -135) answer = "C";
+        else answer = "D";
+
+        let studentId = marker.id;
+        document.getElementById('latest-scan').innerText = `ID: ${studentId} 號 ➡️ 選擇: ${answer}`;
+
+        sendToGoogleSheet(studentId, answer);
+      });
+    }
+
+    // 防刷機制 (節流閥)
+    let lastSentTime = 0;
+    let lastData = "";
+
+    function sendToGoogleSheet(id, ans) {
+      let now = Date.now();
+      let currentData = id + "_" + ans;
+      
+      // 2秒內若資料相同就不重複傳送，保護試算表
+      if (now - lastSentTime > 2000 || lastData !== currentData) {
+        lastSentTime = now;
+        lastData = currentData;
+        
+        document.getElementById('log').innerText = `☁️ 正在同步 ${id} 號的答案至雲端試算表...`;
+        
+        // 傳送資料到 Google Apps Script
+        fetch(GAS_WEB_APP_URL, {
+          method: "POST",
+          mode: "no-cors", // 跨網域關鍵設定
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentId: id, answer: ans })
+        })
+        .then(() => {
+          document.getElementById('log').innerText = `✅ 同步成功！可以掃描下一張。`;
+        })
+        .catch(err => {
+          document.getElementById('log').innerText = `❌ 傳送失敗: ` + err;
+        });
+      }
+    }
+
+    window.onload = initCamera;
+  </script>
+</body>
+</html>
