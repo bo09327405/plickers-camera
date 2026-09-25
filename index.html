@@ -207,9 +207,9 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .sync[data-st="busy"] i{background:#FFC83D;animation:blink 1s infinite}
 .sync[data-st="err"] i{background:var(--absent)}
 @keyframes blink{50%{opacity:.3}}
-.camerr{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:32px;text-align:center}
+.camerr{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:32px;text-align:center;pointer-events:none}
 .camerr.on{display:flex}
-.camerr div{max-width:440px;background:var(--paper);color:var(--ink);border-radius:12px;padding:28px}
+.camerr div{max-width:440px;background:var(--paper);color:var(--ink);border-radius:12px;padding:28px;pointer-events:auto}
 .camerr h3{margin:0 0 8px;font-size:20px}
 
 /* 對話框 */
@@ -934,6 +934,7 @@ function openCamera(){
     var set = s.getVideoTracks()[0].getSettings ? s.getVideoTracks()[0].getSettings() : {};
     var front = set.facingMode ? set.facingMode==='user' : S.cam!=='env';
     video.classList.toggle('mirror', front);
+    $('camerr').classList.remove('on'); // 成功拿到畫面了，把之前可能殘留的錯誤卡片收掉
     return video.play().then(listCameras);
   });
 }
@@ -948,8 +949,10 @@ function listCameras(){
   });
 }
 function flipCamera(){
-  var opts=['env','user'].concat((S.cameras||[]).map(function(d){return d.deviceId;}));
-  var i=opts.indexOf(S.cam); S.cam=opts[(i+1)%opts.length];
+  // 只在前鏡頭／後鏡頭之間切換（facingMode 是「建議」不是「強制」，換不到會自動退回最接近的鏡頭）。
+  // 之前會照 camSel 選單裡列出的實體裝置 ID 硬切，但那個 ID 在手機瀏覽器上常常對不上，
+  // 一切換就直接拿不到畫面、又卡在錯誤畫面出不來，所以改成只用 facingMode 這個穩定很多的方式。
+  S.cam = (S.cam==='user') ? 'env' : 'user';
   $('camSel').value=S.cam; persist();
   openCamera().catch(camError);
 }
