@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,7 +100,7 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .seat[data-s="other"]{background:#fff;--c:var(--ink-2)}
 .seat.flash{animation:lit .9s ease-out}
 @keyframes lit{0%{box-shadow:0 0 0 0 rgba(255,255,255,.9),0 0 40px 10px rgba(255,220,120,.9)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0),0 0 0 0 rgba(255,220,120,0)}}
-.empty{border:2px dashed var(--line);border-radius:8px;padding:40px;text-align:center;color:var(--ink-2)}
+.empty{grid-column:1/-1;max-width:480px;border:2px dashed var(--line);border-radius:8px;padding:40px;text-align:center;color:var(--ink-2)}
 
 /* 手動修改選單 */
 .pop{position:fixed;z-index:60;background:var(--ink);color:#fff;border-radius:8px;padding:6px;display:flex;gap:4px;box-shadow:0 10px 30px rgba(28,34,48,.35)}
@@ -199,6 +198,7 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
       <h1>上場點名</h1>
       <p>舉起卡片，就位。</p>
     </div>
+    <p class="hint" id="demoBadge" style="display:none;margin-top:-18px;color:#B07A00;font-weight:700">⚠ 示範模式：尚未連接試算表，見 SETUP.md</p>
 
     <div class="field">
       <span class="lab" id="clsLab">班級</span>
@@ -513,28 +513,48 @@ if (typeof module !== 'undefined') module.exports = PlickersVision;
 (function(){
 'use strict';
 var $ = function(id){ return document.getElementById(id); };
-var HAS_GAS = typeof google !== 'undefined' && google.script && google.script.run;
 
-/* ---------- 伺服器呼叫（Promise 化；本機預覽時使用示範資料） ---------- */
-// 替換成你發布 GAS Web App 後取得的網址
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxgOCnwLhR7FeYgv8Nn7GhSNBApONsGTQAYW-PYRNgz_dpESSYRVB4RCP3fXSONTQ_V/exec';
+/* ====================================================================
+ * 後端設定
+ * 這裡放你 Apps Script 部署後拿到的網址（結尾是 /exec）。
+ * 部署步驟見同一批檔案裡的 SETUP.md。
+ * 在還沒填之前，頁面會自動用「示範資料」跑，方便你先預覽介面與鏡頭效果，
+ * 但點名結果不會真的寫進任何試算表。
+ * ==================================================================== */
+var API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
 
-function call(action, ...args) {
-  return fetch(GAS_URL, {
-    method: 'POST',
-    headers: {
-      // 避免 GAS CORS 預檢限制，使用 text/plain 帶 JSON
-      'Content-Type': 'text/plain;charset=utf-8'
-    },
-    body: JSON.stringify({
-      action: action,
-      args: args
-    })
-  })
-  .then(response => response.json());
+var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE') >= 0;
+
+/* ---------- 呼叫後端（Promise 化）---------- */
+function buildBody_(fn, args){
+  switch(fn){
+    case 'getBootstrap': return {action:'bootstrap'};
+    case 'getRoster':    return {action:'roster', sheet:args[0], iso:args[1]};
+    case 'startSession': return {action:'start',  sheet:args[0], iso:args[1]};
+    case 'recordBatch':  return {action:'record', sheet:args[0], iso:args[1], records:args[2], overwrite:!!args[3]};
+    case 'markAbsent':   return {action:'absent', sheet:args[0], iso:args[1], rows:args[2]};
+    case 'saveSettings': return {action:'settings', settings:args[0]};
+  }
 }
-
-
+function call(fn){
+  var args = Array.prototype.slice.call(arguments,1);
+  if (IS_DEMO) return Promise.resolve(Demo[fn].apply(Demo,args));
+  var body = buildBody_(fn, args);
+  // Content-Type 用 text/plain，避免瀏覽器送出 CORS 預檢請求（Apps Script 不處理 OPTIONS）
+  return fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(body) })
+    .then(function(r){ return r.text(); })
+    .then(function(t){
+      var j;
+      try { j = JSON.parse(t); }
+      catch(e){ throw new Error('後端回應不是 JSON（可能是部署權限沒設成「所有人」，被導去 Google 登入頁）：' + t.slice(0,120)); }
+      if (!j.ok) throw new Error(j.error || '未知的後端錯誤');
+      return j.data;
+    })
+    .catch(function(err){
+      if (err instanceof TypeError) throw new Error('連不上後端，請確認 API_URL 正確、且該 Apps Script 已部署為「所有人」可存取。（' + err.message + '）');
+      throw err;
+    });
+}
 var Demo = (function(){
   var names='伍少宇 朱維軒 余朔廷 吳宇軒 李翔方 孔令延 林子皓 林君謙 林嵩明 林震河 侯元喆 洪予昕 洪健恩 徐郡森 張容豪 許博勛 陳慶恩 湯竤翔 甯家涵 黃冠諺 黃威凱 廖俞凱 趙煦楷 鄧翊泓 鄭茗鈞 鄭博允 蘇宥睿 李芷妤 邱綺莛 殷元菲 陳采妤 廖珈蒂 謝宇彤'.split(' ');
   var store={};
@@ -960,6 +980,7 @@ $('camSel').onchange=function(){ S.cam=this.value; persist(); };
 /* ---------- 啟動 ---------- */
 S.iso=todayISO(); $('date').value=S.iso;
 renderRule();
+if (IS_DEMO) { toast('示範模式：尚未設定 API_URL，點名結果不會寫入試算表。', 5000); $('demoBadge').style.display=''; }
 call('getBootstrap').then(function(b){
   S.classes=b.classes||[];
   var s=b.settings||{};
