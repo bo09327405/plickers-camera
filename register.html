@@ -175,8 +175,8 @@ var $=function(id){ return document.getElementById(id); };
  * OAuth 用戶端 ID，結尾是 .apps.googleusercontent.com），以及跟 index.html
  * 同一支 Apps Script 部署後的 /exec 網址。兩邊沒填之前，登入跟送出都無法使用。
  * ==================================================================== */
-var API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
-var GOOGLE_CLIENT_ID = 'PASTE_YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE.apps.googleusercontent.com';
+var API_URL = 'https://script.google.com/macros/s/AKfycbxgOCnwLhR7FeYgv8Nn7GhSNBApONsGTQAYW-PYRNgz_dpESSYRVB4RCP3fXSONTQ_V/exec';
+var GOOGLE_CLIENT_ID = '459536923115-0shnjk9m762klapudh6fhk1ph6pks8db.apps.googleusercontent.com';
 var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE') >= 0;
 
 var FACE_LIB_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js';
