@@ -44,6 +44,7 @@ select.inp{font-size:15px}
 .cls[aria-pressed="true"] span{color:#C9CED8}
 
 .whocard{border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:14px;font-size:15px;font-weight:700}
+.reregwarn{border:1.5px solid var(--late);background:#FFF7E6;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 
 .consentbox{max-height:260px;overflow:auto;border:1.5px solid var(--line);border-radius:8px;padding:14px;font-size:13px;color:var(--ink-2);white-space:pre-wrap;background:#fff}
 .agreerow{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}
@@ -107,6 +108,12 @@ button.ghost{appearance:none;border:1.5px solid var(--line);background:#fff;heig
     <div id="step1Student" style="display:none">
       <p class="hint">系統已經核對你登入的帳號，對應到：</p>
       <div class="whocard" id="studentConfirmText"></div>
+    </div>
+    <div id="reregWarn" class="reregwarn" style="display:none">
+      <p class="hint" id="reregText" style="margin:0;color:#8A5A00"></p>
+      <label class="agreerow"><input type="checkbox" id="reregConfirm">
+        <span>我了解，確定要覆蓋重新註冊（原本的同意書紀錄仍會完整保留備查，只是比對用的臉部特徵資料會換成這次新拍攝的）。</span>
+      </label>
     </div>
     <button class="go" id="step1Next" disabled>下一步：同意書</button>
     <p class="status-line" id="status1"></p>
@@ -201,7 +208,7 @@ function ensureFaceModels(){
 
 var CONSENT_VERSION = 'v1';
 var CONSENT_TEXT =
-'【表演藝術課-臉部辨識授權同意書】\n\n'+
+'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間、登入帳號。\n'+
@@ -257,6 +264,24 @@ function showStep(n){
 }
 
 /* ---------- ① 身份確認：老師走班級／座號挑選，學生直接由登入帳號比對出來 ---------- */
+function updateReregWarn(){
+  var at = Reg.student && Reg.student.registeredAt;
+  if(at){
+    $('reregWarn').style.display='';
+    $('reregText').textContent='⚠️ 這位同學已經在 '+at+' 完成過人臉註冊，重新註冊會覆蓋原本比對用的臉部特徵資料。';
+    $('reregConfirm').checked=false;
+  } else {
+    $('reregWarn').style.display='none';
+    $('reregConfirm').checked=false;
+  }
+  updateStep1NextEnabled();
+}
+function updateStep1NextEnabled(){
+  var needsConfirm = Reg.student && Reg.student.registeredAt;
+  $('step1Next').disabled = !Reg.student || (needsConfirm && !$('reregConfirm').checked);
+}
+$('reregConfirm').onchange=updateStep1NextEnabled;
+
 function renderClasses(){
   var box=$('classes'); box.innerHTML='';
   if(!Reg.classes.length){ box.innerHTML='<span class="hint">找不到班級。</span>'; return; }
@@ -267,12 +292,12 @@ function renderClasses(){
     b.firstChild.textContent=c.sheet; b.lastChild.textContent=c.count+' 人';
     b.title=c.label;
     b.onclick=function(){
-      Reg.sheet=c.sheet; Reg.student=null; $('step1Next').disabled=true;
+      Reg.sheet=c.sheet; Reg.student=null; updateReregWarn();
       renderClasses(); $('studentField').style.display='none'; $('status1').textContent='讀取名單中…';
       call('regRoster', c.sheet).then(function(r){
         Reg.students=r.students||[];
         var sel=$('studentSel'); sel.innerHTML='<option value="">請選擇…</option>';
-        Reg.students.forEach(function(st){ var o=document.createElement('option'); o.value=st.seat; o.textContent=pad(st.seat)+' '+st.name; sel.appendChild(o); });
+        Reg.students.forEach(function(st){ var o=document.createElement('option'); o.value=st.seat; o.textContent=pad(st.seat)+' '+st.name+(st.registeredAt?'（已註冊）':''); sel.appendChild(o); });
         $('studentField').style.display=''; $('status1').textContent='';
       }).catch(function(e){ $('status1').textContent='讀取名單失敗：'+(e&&e.message||e); });
     };
@@ -282,24 +307,24 @@ function renderClasses(){
 $('studentSel').onchange=function(){
   var seat=+this.value;
   Reg.student=Reg.students.filter(function(st){ return st.seat===seat; })[0]||null;
-  $('step1Next').disabled=!Reg.student;
+  updateReregWarn();
 };
-$('step1Next').onclick=function(){ if(Reg.student){ $('consentText').textContent=CONSENT_TEXT; showStep(2); } };
+$('step1Next').onclick=function(){ if(!$('step1Next').disabled && Reg.student){ $('consentText').textContent=CONSENT_TEXT; showStep(2); } };
 
 function afterLogin(identity){
   IDENTITY=identity;
   $('whoamiText').textContent = identity.role==='teacher' ? ('👩‍🏫 老師身份：'+identity.email) : ('🙋 '+identity.email);
   if(identity.role==='teacher'){
     $('step1Teacher').style.display=''; $('step1Student').style.display='none';
-    Reg.sheet=null; Reg.student=null; $('step1Next').disabled=true;
+    Reg.sheet=null; Reg.student=null; updateReregWarn();
     $('classes').innerHTML='<span class="hint">讀取班級中…</span>';
     call('regClasses').then(function(list){ Reg.classes=list||[]; renderClasses(); })
       .catch(function(e){ $('classes').innerHTML=''; $('status1').textContent='讀取班級失敗：'+(e&&e.message||e); });
   } else {
     $('step1Teacher').style.display='none'; $('step1Student').style.display='';
-    Reg.sheet=identity.sheet; Reg.student={seat:identity.seat, name:identity.name, row:identity.row};
+    Reg.sheet=identity.sheet; Reg.student={seat:identity.seat, name:identity.name, row:identity.row, registeredAt:identity.registeredAt||null};
     $('studentConfirmText').textContent = identity.sheet+' 班　'+pad(identity.seat)+' 號　'+identity.name;
-    $('step1Next').disabled=false;
+    updateReregWarn();
   }
   showStep(1);
   $('gate').classList.remove('on'); $('app').style.display='';
@@ -453,7 +478,7 @@ function renderDoneActs(){
   var box=$('doneActs'); box.innerHTML='';
   if(IDENTITY && IDENTITY.role==='teacher'){
     var b=document.createElement('button'); b.type='button'; b.className='go'; b.textContent='再幫另一位同學註冊';
-    b.onclick=function(){ Reg.student=null; $('studentSel').value=''; $('step1Next').disabled=true; showStep(1); };
+    b.onclick=function(){ Reg.student=null; $('studentSel').value=''; updateReregWarn(); showStep(1); };
     box.appendChild(b);
   } else {
     var p=document.createElement('p'); p.className='hint'; p.textContent='可以直接關閉這個分頁了。';
