@@ -116,7 +116,7 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .regacts button:disabled{opacity:.45;cursor:not-allowed}
 .regcam{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
 .regcam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-.regcam.flash::after{content:"";position:absolute;inset:0;background:#fff;animation:regflashfx .35s ease-out}
+.regcam.flash::after{content:"";position:absolute;inset:0;background:#fff;animation:regflashfx .35s ease-out forwards;pointer-events:none}
 @keyframes regflashfx{from{opacity:.85}to{opacity:0}}
 .regcamguide{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .regcamguide ellipse{fill:none;stroke:rgba(255,255,255,.6);stroke-width:1.6;stroke-dasharray:5 4;transition:stroke .15s,stroke-width .15s}
@@ -710,7 +710,7 @@ var $ = function(id){ return document.getElementById(id); };
  * 在還沒填之前，頁面會自動用「示範資料」跑，方便你先預覽介面與鏡頭效果，
  * 但點名結果不會真的寫進任何試算表。
  * ==================================================================== */
-var API_URL = 'https://script.google.com/macros/s/AKfycbzOqzz3A7wr8YEHQ5JHPDzZQZ-V6ok3bB0sm94qIagwx76V8pOD9KMO6Qm7DfGOk33P/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycbxgOCnwLhR7FeYgv8Nn7GhSNBApONsGTQAYW-PYRNgz_dpESSYRVB4RCP3fXSONTQ_V/exec';
 
 var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE') >= 0;
 
@@ -1058,7 +1058,7 @@ document.addEventListener('click', closeBonus);
  * ==================================================================== */
 var CONSENT_VERSION = 'v1'; // 要跟 Code.gs 裡的 CONSENT_VERSION 對應；改了同意書文字記得兩邊都更新
 var CONSENT_TEXT =
-'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
+'【表演藝術課-臉部辨識授權同意書】\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
