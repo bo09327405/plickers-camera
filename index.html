@@ -200,6 +200,8 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .bar{display:flex;align-items:center;gap:10px}
 .btn{appearance:none;border:0;height:48px;border-radius:999px;padding:0 20px;background:rgba(255,255,255,.16);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;font-weight:700;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
 .btn:hover{background:rgba(255,255,255,.26)}
+.btn[aria-pressed="true"]{background:rgba(20,160,106,.85)}
+.btn[aria-pressed="true"]:hover{background:rgba(20,160,106,1)}
 .btn.end{background:#fff;color:var(--ink);margin-left:auto;padding:0 26px}
 .btn svg{width:20px;height:20px}
 .sync{font-size:12px;opacity:.8;display:flex;align-items:center;gap:6px}
@@ -362,6 +364,7 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
     <div class="bar">
       <button class="btn" id="flipBtn" aria-label="切換鏡頭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/></svg><span class="t">切換鏡頭</span></button>
       <button class="btn" id="soundBtn" aria-pressed="true" aria-label="提示音"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10z"/><path id="wave" d="M16 9a4 4 0 0 1 0 6"/></svg><span class="t">提示音</span></button>
+      <button class="btn" id="instantBtn" aria-pressed="false" aria-label="即時輸入"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg><span class="t">即時輸入</span></button>
       <div class="sync" id="sync" data-st="ok"><i></i><span id="syncText">已同步</span></div>
       <button class="btn end" id="endBtn"><span class="t">結束點名</span></button>
     </div>
@@ -609,7 +612,7 @@ var $ = function(id){ return document.getElementById(id); };
  * 在還沒填之前，頁面會自動用「示範資料」跑，方便你先預覽介面與鏡頭效果，
  * 但點名結果不會真的寫進任何試算表。
  * ==================================================================== */
-var API_URL = 'https://script.google.com/macros/s/AKfycbxgOCnwLhR7FeYgv8Nn7GhSNBApONsGTQAYW-PYRNgz_dpESSYRVB4RCP3fXSONTQ_V/exec';
+var API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
 
 var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE') >= 0;
 
@@ -1117,7 +1120,16 @@ function flush(){
     setSync('err','寫入失敗，稍後重試');
   });
 }
-setInterval(flush, 1200);
+/* 即時輸入開著：每 1.2 秒巡一次（幾乎等於掃到就寫）。
+   即時輸入關著：拉長到每 5 秒才巡一次，讓佇列裡的卡片真的先累積起來批次送出，
+   兩種模式才會有實際感受得到的差異，不會不管開關都幾乎同時寫入。
+   （手動加分永遠不走這個佇列，adjustBonus 每次點擊都直接送出，不受這個開關影響。） */
+var flushTimer=null;
+function scheduleFlush(){
+  if(flushTimer) clearTimeout(flushTimer);
+  flushTimer=setTimeout(function(){ flush(); scheduleFlush(); }, S.instant ? 1200 : 5000);
+}
+scheduleFlush();
 window.addEventListener('beforeunload', function(e){ if(S.queue.length||S.inflight){ e.preventDefault(); e.returnValue=''; } });
 
 /* ---------- 開始／結束 ---------- */
@@ -1196,7 +1208,15 @@ $('panelToggle').onclick=function(){
   try{ localStorage.setItem('rollcall_panel', collapsed?'1':'0'); }catch(e){}
 };
 try{ if(localStorage.getItem('rollcall_panel')==='1'){ $('setup').classList.add('collapsed'); $('panelToggle').setAttribute('aria-expanded','false'); } }catch(e){}
-$('instantSwitch').onclick=function(){ S.instant=!S.instant; this.setAttribute('aria-checked',S.instant); persist(); };
+function setInstant(v){
+  S.instant=!!v;
+  $('instantSwitch').setAttribute('aria-checked', String(S.instant));
+  $('instantBtn').setAttribute('aria-pressed', String(S.instant));
+  scheduleFlush();
+  persist();
+}
+$('instantSwitch').onclick=function(){ setInstant(!S.instant); };
+$('instantBtn').onclick=function(){ setInstant(!S.instant); };
 $('bonusSwitch').onclick=function(){ S.bonusMode=!S.bonusMode; this.setAttribute('aria-checked',S.bonusMode); closePop(); closeBonus(); renderGrid(); persist(); };
 
 /* ---------- 啟動 ---------- */
@@ -1210,7 +1230,7 @@ function applyBootstrap(b){
   if(s.late){ S.late=s.late; $('late').value=s.late; }
   if(typeof s.absentAfter==='number') S.absentAfter=s.absentAfter;
   if(s.cam){ S.cam=s.cam; }
-  if(s.instant){ S.instant=true; $('instantSwitch').setAttribute('aria-checked','true'); }
+  if(s.instant){ S.instant=true; $('instantSwitch').setAttribute('aria-checked','true'); $('instantBtn').setAttribute('aria-pressed','true'); scheduleFlush(); }
   if(s.bonusMode){ S.bonusMode=true; $('bonusSwitch').setAttribute('aria-checked','true'); }
   if(s.sheet && S.classes.some(function(c){return c.sheet===s.sheet;})) S.sheet=s.sheet;
   renderRule(); renderClasses();
