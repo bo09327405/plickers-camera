@@ -101,6 +101,27 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .rule div b{display:block;font-family:var(--num);font-size:20px;font-weight:700}
 .rule .r1{background:var(--ontime)}.rule .r2{background:var(--late);color:#2A1E00}.rule .r3{background:var(--absent)}
 
+/* ============ 人臉辨識點名／學生人臉註冊（新增） ============ */
+.linkbtn{appearance:none;border:1.5px solid var(--line);background:#fff;color:var(--ink);height:44px;border-radius:6px;font-weight:700;cursor:pointer;width:100%}
+.linkbtn:hover{border-color:var(--ink-2)}
+.regbody{padding:24px;display:flex;flex-direction:column;gap:14px;max-height:80vh;overflow:auto}
+.regbody h3{margin:0;font-size:20px}
+.regstep{display:flex;flex-direction:column;gap:14px}
+.consentbox{max-height:220px;overflow:auto;border:1.5px solid var(--line);border-radius:8px;padding:14px;font-size:13px;color:var(--ink-2);white-space:pre-wrap;background:var(--paper)}
+.agreerow{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}
+.agreerow input{margin-top:3px;flex:none}
+.regacts{display:flex;gap:8px;margin-top:4px}
+.regacts button{flex:1;appearance:none;border:1.5px solid var(--line);background:#fff;height:46px;border-radius:8px;font-weight:700;cursor:pointer}
+.regacts button.pri{background:var(--ink);border-color:var(--ink);color:#fff}
+.regacts button:disabled{opacity:.45;cursor:not-allowed}
+.regcam{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.regcam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.regdots{display:flex;gap:6px;justify-content:center}
+.regdots i{width:11px;height:11px;border-radius:50%;background:var(--line);display:block}
+.regdots i.on{background:var(--ontime)}
+#regDlg{border:0;border-radius:12px;padding:0;max-width:480px;width:calc(100% - 32px);color:var(--ink);background:var(--paper)}
+#regDlg::backdrop{background:rgba(10,12,18,.6)}
+
 .go{appearance:none;border:0;margin-top:auto;height:64px;border-radius:8px;background:var(--ink);color:#fff;font-size:20px;font-weight:900;letter-spacing:.2em;cursor:pointer;position:relative;overflow:hidden}
 .go::before{content:"";position:absolute;left:0;top:0;bottom:0;width:10px;background:var(--spike)}
 .go:hover{background:#2A3246}
@@ -323,7 +344,17 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
           <div class="tt"><b>手動加分</b><span>點座位顯示加減分按鈕，取代點名修改選單</span></div>
           <button type="button" class="switch" id="bonusSwitch" role="switch" aria-checked="false"></button>
         </div>
+        <div class="toggle">
+          <div class="tt"><b>人臉辨識點名</b><span>鏡頭同時偵測 Plickers 卡片與已註冊學生的臉，抓到哪個就記錄哪個</span></div>
+          <button type="button" class="switch" id="faceSwitch" role="switch" aria-checked="false"></button>
+        </div>
       </div>
+    </div>
+
+    <div class="field">
+      <span class="lab">學生人臉註冊</span>
+      <button type="button" class="linkbtn" id="openRegBtn">現場為學生完成人臉註冊…</button>
+      <p class="hint">也可以把獨立網頁 <code>register.html</code> 的連結傳給學生，讓他們自己用手機完成註冊＋簽署同意書。</p>
     </div>
 
     <button class="go" id="go" disabled>開始點名</button>
@@ -381,6 +412,68 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
     <button id="endCancel">繼續點名</button>
   </div>
 </div></dialog>
+
+<dialog id="regDlg" aria-label="學生人臉註冊">
+  <div class="regbody">
+    <h3>學生人臉註冊</h3>
+
+    <div class="regstep" id="regStep1">
+      <p class="hint">選擇班級</p>
+      <div class="classes" id="regClasses"></div>
+      <div class="field" id="regStudentField" style="display:none">
+        <label for="regStudentSel">選擇座號姓名（請確認是本人）</label>
+        <select class="inp" id="regStudentSel"></select>
+      </div>
+      <div class="regacts">
+        <button type="button" id="regStep1Next" class="pri" disabled>下一步：同意書</button>
+      </div>
+    </div>
+
+    <div class="regstep" id="regStep2" style="display:none">
+      <div class="consentbox" id="regConsentText"></div>
+      <label class="agreerow"><input type="checkbox" id="regAgree">
+        <span>我已詳細閱讀並瞭解上述說明，同意學校蒐集、處理及利用臉部特徵資料，用於課堂點名辨識。</span>
+      </label>
+      <div class="row2">
+        <div class="field"><label for="regSignName">簽署人姓名</label><input class="inp" id="regSignName" autocomplete="off"></div>
+        <div class="field"><label for="regSignRole">簽署人身份</label>
+          <select class="inp" id="regSignRole">
+            <option value="學生本人">學生本人</option>
+            <option value="家長或監護人">家長或監護人</option>
+          </select>
+        </div>
+      </div>
+      <div class="regacts">
+        <button type="button" id="regStep2Back">上一步</button>
+        <button type="button" id="regStep2Next" class="pri">下一步：臉部掃描</button>
+      </div>
+    </div>
+
+    <div class="regstep" id="regStep3" style="display:none">
+      <div class="regcam"><video id="regVideo" playsinline muted autoplay></video></div>
+      <p class="hint" id="regHint">準備好後按下方按鈕拍攝</p>
+      <div class="regdots" id="regDots"></div>
+      <div class="regacts">
+        <button type="button" id="regStep3Back">上一步</button>
+        <button type="button" id="regShoot">拍攝這一張</button>
+        <button type="button" id="regRetake">全部重拍</button>
+      </div>
+      <div class="regacts">
+        <button type="button" id="regSubmit" class="pri" disabled>完成註冊</button>
+      </div>
+    </div>
+
+    <div class="regstep" id="regDone" style="display:none">
+      <p id="regDoneMsg"></p>
+      <div class="regacts">
+        <button type="button" id="regAnother" class="pri">再註冊一位</button>
+        <button type="button" id="regClose">關閉</button>
+      </div>
+    </div>
+
+    <p class="status-line" id="regStatus" role="alert" aria-live="polite"></p>
+  </div>
+</dialog>
 
 <div class="toast" id="toast" role="status"></div>
 
@@ -612,9 +705,47 @@ var $ = function(id){ return document.getElementById(id); };
  * 在還沒填之前，頁面會自動用「示範資料」跑，方便你先預覽介面與鏡頭效果，
  * 但點名結果不會真的寫進任何試算表。
  * ==================================================================== */
-var API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+var API_URL = 'https://script.google.com/macros/s/AKfycbzOqzz3A7wr8YEHQ5JHPDzZQZ-V6ok3bB0sm94qIagwx76V8pOD9KMO6Qm7DfGOk33P/exec';
 
 var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE') >= 0;
+
+/* ====================================================================
+ * 人臉辨識（新增功能）：用 face-api.js（TensorFlow.js 的臉部辨識函式庫）
+ * 在瀏覽器端做偵測＋比對，完全不會把任何人臉影像傳到後端或第三方伺服器，
+ * 傳到 Google 試算表的只有「128 個浮點數的特徵值」，無法還原成照片。
+ * 函式庫跟模型檔只有在「第一次打開人臉辨識開關」或「打開學生註冊」時才會載入，
+ * 平常不使用這個功能就完全不會多耗流量，不影響原本的卡片點名效能。
+ * 如果學校網路會擋 cdn.jsdelivr.net，可以把 model 資料夾下載回來放進同一個
+ * GitHub repo，改成指到自己的網址即可（詳見附的說明文件）。
+ * ==================================================================== */
+var FACE_LIB_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js';
+var FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
+var FACE_MATCH_THRESHOLD = 0.5; // 距離門檻，越小越嚴格；face-api 官方範例常用 0.5~0.6
+var faceLibPromise = null, faceReady = false, faceModelsPromise = null;
+function loadFaceApiLib(){
+  if (faceLibPromise) return faceLibPromise;
+  faceLibPromise = new Promise(function(resolve, reject){
+    if (typeof faceapi !== 'undefined') return resolve();
+    var s = document.createElement('script');
+    s.src = FACE_LIB_URL;
+    s.onload = function(){ resolve(); };
+    s.onerror = function(){ faceLibPromise = null; reject(new Error('人臉辨識函式庫載入失敗，請確認網路連線（此網路是否會擋 cdn.jsdelivr.net？）')); };
+    document.head.appendChild(s);
+  });
+  return faceLibPromise;
+}
+function ensureFaceModels(){
+  if (faceReady) return Promise.resolve();
+  if (faceModelsPromise) return faceModelsPromise;
+  faceModelsPromise = loadFaceApiLib().then(function(){
+    return Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL)
+    ]);
+  }).then(function(){ faceReady = true; }).catch(function(e){ faceModelsPromise = null; throw e; });
+  return faceModelsPromise;
+}
 
 /* ---------- 呼叫後端（Promise 化）---------- */
 function buildBody_(fn, args){
@@ -626,6 +757,11 @@ function buildBody_(fn, args){
     case 'markAbsent':   return {action:'absent', sheet:args[0], iso:args[1], rows:args[2]};
     case 'saveSettings': return {action:'settings', settings:args[0]};
     case 'adjustBonus':  return {action:'bonus', sheet:args[0], iso:args[1], row:args[2], seat:args[3], delta:args[4]};
+    case 'regClasses':   return {action:'regClasses'};
+    case 'regRoster':    return {action:'regRoster', sheet:args[0]};
+    case 'faceEnroll':   return {action:'faceEnroll', sheet:args[0].sheet, row:args[0].row, seat:args[0].seat, name:args[0].name, descriptors:args[0].descriptors, consent:args[0].consent, source:args[0].source};
+    case 'faceData':     return {action:'faceData', sheet:args[0]};
+    case 'faceRevoke':   return {action:'faceRevoke', sheet:args[0], row:args[1], seat:args[2]};
   }
 }
 function call(fn){
@@ -667,7 +803,15 @@ var Demo = (function(){
       var k=s+':'+seat; var next=(bonus[k]||0)+delta;
       bonus[k]=next;
       return {value:next};
-    }
+    },
+    // 示範模式沒有真的試算表可以存人臉資料，這裡只做最基本的假回應，
+    // 讓「學生人臉註冊」流程在示範模式下也能走完、不會噴錯，但不會真的儲存，
+    // 人臉辨識點名在示範模式下也就永遠比對不到人（S.faceRoster 會是空的）。
+    regClasses:function(){ return this.getBootstrap().classes; },
+    regRoster:function(s){ return {sheet:s, label:s, students:roster(s).map(function(x){ return {seat:x.seat,name:x.name,row:x.row}; })}; },
+    faceEnroll:function(p){ return {ok:true, seat:p.seat, name:p.name, count:(p.descriptors||[]).length}; },
+    faceData:function(){ return []; },
+    faceRevoke:function(){ return true; }
   };
 })();
 
@@ -679,6 +823,9 @@ var S = {
   queue:[], inflight:false, running:false, sound:true,
   instant:false,   // 即時輸入：每次刷卡立即寫入，不等批次
   bonusMode:false, // 手動加分：點座位改為顯示加減分按鈕
+  faceEnabled:false, // 人臉辨識點名開關（新增）
+  faceRoster:{},      // seat → 已註冊的臉部特徵值陣列（開始點名時才會抓）
+  faceCounts:{},      // sheet → 該班已完成人臉註冊的人數（僅供顯示）
   pw:''            // 進入密碼，通過驗證後才會有值
 };
 
@@ -715,7 +862,9 @@ function renderClasses(){
     var b=document.createElement('button'); b.type='button'; b.className='cls';
     b.setAttribute('aria-pressed', c.sheet===S.sheet?'true':'false');
     b.innerHTML='<b></b><span></span>';
-    b.firstChild.textContent=c.sheet; b.lastChild.textContent=c.count+' 人';
+    b.firstChild.textContent=c.sheet;
+    var faceN = S.faceCounts && S.faceCounts[c.sheet];
+    b.lastChild.textContent=c.count+' 人'+(S.faceEnabled && faceN ? '・已註冊臉 '+faceN : '');
     b.title=c.label;
     b.onclick=function(){ S.sheet=c.sheet; renderClasses(); persist(); loadRoster(); };
     box.appendChild(b);
@@ -897,9 +1046,151 @@ function openBonus(ev, st){
 }
 document.addEventListener('click', closeBonus);
 
-function persist(){
-  call('saveSettings', {sheet:S.sheet, late:S.late, absentAfter:S.absentAfter, cam:S.cam, instant:S.instant, bonusMode:S.bonusMode}).catch(function(){});
+/* ====================================================================
+ * 學生人臉註冊（新增功能）：老師在主頁面現場帶學生完成註冊。
+ * 跟獨立的 register.html 走同一套後端 action（regClasses / regRoster / faceEnroll），
+ * 差別只在這裡是用老師自己的登入密碼（S.pw），不需要另外輸入學生專用密碼。
+ * ==================================================================== */
+var CONSENT_VERSION = 'v1'; // 要跟 Code.gs 裡的 CONSENT_VERSION 對應；改了同意書文字記得兩邊都更新
+var CONSENT_TEXT =
+'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
+'為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
+'1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
+'2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
+'3. 利用期間：自完成註冊之日起，至畢業／轉出班級，或本人（未成年由法定代理人）申請停用為止。\n'+
+'4. 利用對象：僅授課教師本人於點名系統中比對使用，不會提供第三人，也不會公開或用於其他用途。\n'+
+'5. 保管方式：以文字型態存放於學校內部試算表，非授課教師無法存取。\n'+
+'6. 您的權利：得隨時要求查詢、複製、停止蒐集或刪除已註冊的特徵資料，請洽授課教師；教師端亦可隨時將您的資料設為停用。\n'+
+'7. 本同意屬自願性質；不同意或事後撤回，均不影響原有課堂點名方式（教師仍會用其他方式為您點名），不會有任何不利處分。\n\n'+
+'若您已年滿 18 歲，請由本人親自閱讀並簽署；若未滿 18 歲，請由家長或法定代理人閱讀並簽署本同意書。';
+
+var Reg = { classes:[], sheet:null, students:[], student:null, signName:'', signRole:'學生本人', stream:null, descriptors:[], captured:0, needed:4 };
+var REG_HINTS = ['請正臉看鏡頭','請將臉稍微轉向左邊','請將臉稍微轉向右邊','請正臉看鏡頭（最後一張）'];
+
+function regShowStep(n){
+  ['regStep1','regStep2','regStep3','regDone'].forEach(function(id,i){ $(id).style.display = (i+1===n) ? '' : 'none'; });
+  $('regStatus').textContent='';
 }
+function regRenderClasses(){
+  var box=$('regClasses'); box.innerHTML='';
+  Reg.classes.forEach(function(c){
+    var b=document.createElement('button'); b.type='button'; b.className='cls';
+    b.setAttribute('aria-pressed', c.sheet===Reg.sheet?'true':'false');
+    b.innerHTML='<b></b><span></span>';
+    b.firstChild.textContent=c.sheet; b.lastChild.textContent=c.count+' 人';
+    b.title=c.label;
+    b.onclick=function(){
+      Reg.sheet=c.sheet; Reg.student=null; $('regStep1Next').disabled=true;
+      regRenderClasses();
+      $('regStudentField').style.display='none';
+      $('regStatus').textContent='讀取名單中…';
+      call('regRoster', c.sheet).then(function(r){
+        Reg.students=r.students||[];
+        var sel=$('regStudentSel'); sel.innerHTML='<option value="">請選擇…</option>';
+        Reg.students.forEach(function(st){
+          var o=document.createElement('option'); o.value=st.seat;
+          o.textContent=pad(st.seat)+' '+st.name; sel.appendChild(o);
+        });
+        $('regStudentField').style.display=''; $('regStatus').textContent='';
+      }).catch(function(e){ $('regStatus').textContent='讀取名單失敗：'+(e&&e.message||e); });
+    };
+    box.appendChild(b);
+  });
+}
+$('regStudentSel').onchange=function(){
+  var seat=+this.value;
+  Reg.student = Reg.students.filter(function(st){ return st.seat===seat; })[0] || null;
+  $('regStep1Next').disabled=!Reg.student;
+};
+$('openRegBtn').onclick=function(){
+  Reg.sheet=null; Reg.student=null; Reg.descriptors=[]; Reg.captured=0;
+  $('regStep1Next').disabled=true; $('regStudentField').style.display='none';
+  $('regConsentText').textContent=CONSENT_TEXT;
+  $('regAgree').checked=false; $('regSignName').value=''; $('regSignRole').value='學生本人';
+  regShowStep(1);
+  if(Reg.classes.length){ regRenderClasses(); }
+  else {
+    $('regClasses').innerHTML='<span class="hint">讀取班級中…</span>';
+    call('regClasses').then(function(list){ Reg.classes=list||[]; regRenderClasses(); })
+      .catch(function(e){ $('regClasses').innerHTML=''; $('regStatus').textContent='讀取班級失敗：'+(e&&e.message||e); });
+  }
+  if(typeof $('regDlg').showModal==='function') $('regDlg').showModal(); else $('regDlg').setAttribute('open','');
+};
+$('regStep1Next').onclick=function(){ if(Reg.student) regShowStep(2); };
+$('regStep2Back').onclick=function(){ regShowStep(1); };
+$('regStep2Next').onclick=function(){
+  if(!$('regAgree').checked){ toast('請先勾選同意才能繼續'); return; }
+  var nm=$('regSignName').value.trim();
+  if(!nm){ toast('請輸入簽署人姓名'); return; }
+  Reg.signName=nm; Reg.signRole=$('regSignRole').value;
+  Reg.descriptors=[]; Reg.captured=0; renderRegDots();
+  $('regSubmit').disabled=true; $('regHint').textContent=REG_HINTS[0];
+  regShowStep(3);
+  regOpenCamera().catch(function(e){ $('regStatus').textContent='無法開啟鏡頭：'+(e&&e.message||e); });
+};
+$('regStep3Back').onclick=function(){ regStopCamera(); regShowStep(2); };
+function renderRegDots(){
+  var box=$('regDots'); box.innerHTML='';
+  for(var i=0;i<Reg.needed;i++){ var d=document.createElement('i'); if(i<Reg.captured) d.className='on'; box.appendChild(d); }
+}
+function regOpenCamera(){
+  regStopCamera();
+  return navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}}, audio:false})
+    .then(function(s){ Reg.stream=s; $('regVideo').srcObject=s; return $('regVideo').play(); });
+}
+function regStopCamera(){ if(Reg.stream){ Reg.stream.getTracks().forEach(function(t){t.stop();}); Reg.stream=null; } }
+$('regShoot').onclick=function(){
+  $('regStatus').textContent='偵測中…';
+  ensureFaceModels().then(function(){
+    return faceapi.detectSingleFace($('regVideo'), new faceapi.TinyFaceDetectorOptions({inputSize:320, scoreThreshold:0.5}))
+      .withFaceLandmarks().withFaceDescriptor();
+  }).then(function(res){
+    if(!res){ $('regStatus').textContent='沒有偵測到臉，請正對鏡頭、光線充足再試一次'; return; }
+    Reg.descriptors.push(Array.prototype.slice.call(res.descriptor));
+    Reg.captured++; renderRegDots(); $('regStatus').textContent='';
+    if(Reg.captured>=Reg.needed){ $('regHint').textContent='拍攝完成，可以送出註冊了'; $('regSubmit').disabled=false; }
+    else $('regHint').textContent=REG_HINTS[Reg.captured] || REG_HINTS[0];
+  }).catch(function(e){ $('regStatus').textContent='人臉辨識模型載入失敗：'+(e&&e.message||e); });
+};
+$('regRetake').onclick=function(){
+  Reg.descriptors=[]; Reg.captured=0; renderRegDots(); $('regSubmit').disabled=true; $('regHint').textContent=REG_HINTS[0]; $('regStatus').textContent='';
+};
+$('regSubmit').onclick=function(){
+  if(!Reg.student || Reg.descriptors.length<Reg.needed) return;
+  $('regSubmit').disabled=true; $('regStatus').textContent='送出中…';
+  call('faceEnroll', {
+    sheet:Reg.sheet, row:Reg.student.row, seat:Reg.student.seat, name:Reg.student.name,
+    descriptors:Reg.descriptors, consent:{name:Reg.signName, role:Reg.signRole, version:CONSENT_VERSION}, source:'teacher'
+  }).then(function(r){
+    regStopCamera();
+    S.faceCounts[Reg.sheet]=(S.faceCounts[Reg.sheet]||0)+1; if(S.sheet===Reg.sheet) renderClasses();
+    $('regDoneMsg').textContent=pad(r.seat)+' '+r.name+' 已完成人臉註冊。';
+    regShowStep(4);
+  }).catch(function(e){ $('regSubmit').disabled=false; $('regStatus').textContent='送出失敗：'+(e&&e.message||e); });
+};
+$('regAnother').onclick=function(){
+  Reg.student=null; Reg.descriptors=[]; Reg.captured=0; $('regStep1Next').disabled=true;
+  $('regStudentSel').value=''; regShowStep(1);
+};
+$('regClose').onclick=function(){ regStopCamera(); $('regDlg').close(); };
+$('regDlg').addEventListener('close', regStopCamera);
+
+function persist(){
+  call('saveSettings', {sheet:S.sheet, late:S.late, absentAfter:S.absentAfter, cam:S.cam, instant:S.instant, bonusMode:S.bonusMode, faceEnabled:S.faceEnabled}).catch(function(){});
+}
+
+/* ---------- 人臉辨識開關 ---------- */
+function setFaceEnabled(v, silent){
+  S.faceEnabled=!!v;
+  $('faceSwitch').setAttribute('aria-checked', String(S.faceEnabled));
+  renderClasses();
+  if(S.faceEnabled){
+    ensureFaceModels().then(function(){ if(!silent) toast('人臉辨識已就緒，開始點名時會一併偵測'); })
+      .catch(function(e){ toast('人臉辨識模型載入失敗：'+(e&&e.message||e)+'（本次仍可用卡片點名）',5500); });
+  }
+  if(!silent) persist();
+}
+$('faceSwitch').onclick=function(){ setFaceEnabled(!S.faceEnabled); };
 
 /* ---------- 點名判定 ---------- */
 function currentPhase(){
@@ -922,6 +1213,7 @@ var video=$('video'), overlay=$('overlay'), octx=overlay.getContext('2d');
 var proc=document.createElement('canvas'), pctx=proc.getContext('2d',{willReadFrequently:true});
 var stream=null, gray=null, rafId=0, lastDetect=0, busy=false;
 var tracks={}; // id → {hits, first, last, q, confirmed}
+var faceTracks={}, lastFaceDetect=0, faceBusy=false; // 人臉辨識用的追蹤狀態（新增，跟卡片的 tracks 分開）
 var PROC_W = (navigator.hardwareConcurrency||4) >= 6 ? 1280 : 960;
 
 function stopStream(){ if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; } }
@@ -996,7 +1288,42 @@ function loop(t){
     handle(found, performance.now());
     busy=false;
   }
+  // 人臉辨識另外用比較慢的頻率（約 450ms 一次）偵測，避免跟卡片辨識搶效能；
+  // 沒開啟這個功能、或模型還沒載入完成時完全不會執行到這裡，跟原本效能無關。
+  if(S.faceEnabled && faceReady && t-lastFaceDetect>=450 && !faceBusy && proc.width && video.readyState>=2){
+    lastFaceDetect=t; faceBusy=true;
+    detectFaces().catch(function(){}).then(function(){ faceBusy=false; });
+  }
   draw(performance.now());
+}
+
+/* ---------- 人臉辨識偵測＋比對（新增） ---------- */
+function matchFace(descriptor){
+  var bestSeat=null, bestDist=FACE_MATCH_THRESHOLD;
+  Object.keys(S.faceRoster||{}).forEach(function(seat){
+    (S.faceRoster[seat]||[]).forEach(function(ref){
+      var d=faceapi.euclideanDistance(descriptor, ref);
+      if(d<bestDist){ bestDist=d; bestSeat=+seat; }
+    });
+  });
+  return bestSeat;
+}
+function detectFaces(){
+  // 重用 PlickersVision 已經畫在 proc 這個 canvas 上的當下畫面，不用另外再截一次圖，
+  // 座標系統也因此跟卡片框一樣可以直接用同一個 mapper() 換算成螢幕座標。
+  return faceapi.detectAllFaces(proc, new faceapi.TinyFaceDetectorOptions({inputSize:224, scoreThreshold:0.5}))
+    .withFaceLandmarks().withFaceDescriptors()
+    .then(function(results){
+      var now=performance.now();
+      results.forEach(function(res){
+        var seat=matchFace(res.descriptor);
+        if(seat==null) return;
+        var tr=faceTracks[seat];
+        if(!tr || now-tr.last>1500){ tr=faceTracks[seat]={hits:0,last:now}; }
+        tr.hits++; tr.last=now; tr.box=res.detection.box;
+        if(tr.hits>=2 && !S.marks[seat]) checkIn(seat,'face');
+      });
+    });
 }
 
 function studentBySeat(seat){
@@ -1014,17 +1341,18 @@ function handle(found, now){
   });
 }
 
-function checkIn(card){
+function checkIn(card, method){
+  // method 是人臉辨識點名新增的參數：'face' 表示這次是靠人臉比對到的，不是刷卡；
+  // 沒有帶這個參數時（原本卡片點名的呼叫方式）行為跟改動前完全一樣。
   var st=studentBySeat(card);
   if(!st){ return; }
   if(S.marks[st.seat]) return; // 已點過（或試算表已有紀錄）
   var status=currentPhase().s, time=nowStr();
   S.marks[st.seat]={status:status,time:time,pending:true,fresh:performance.now()};
-  S.queue.push({row:st.row,seat:st.seat,status:status,time:time,card:card});
-  feed(st,status,time); beep(status); renderStrip(); renderTally();
+  S.queue.push({row:st.row,seat:st.seat,status:status,time:time,card:method==='face'?'':card,method:method||'card'});
+  feed(st,status,time,method); beep(status); renderStrip(); renderTally();
   if(navigator.vibrate) navigator.vibrate(status==='1'?30:[30,60,30]);
-  if(S.instant) flush(); // 即時輸入：立刻寫入試算表
-  else setSync('busy', S.queue.length+' 筆先存在本機，結束點名時才會寫入'); // 關閉：老實告知還沒真的送出
+  if(S.instant) flush(); // 即時輸入：不等 1.2 秒批次，立刻寫入試算表
 }
 
 function draw(now){
@@ -1061,6 +1389,25 @@ function draw(now){
     octx.fillStyle='rgba(255,255,255,.75)';
     octx.fillText(sub, bx+padX+dot+fs*0.4, cy+fs*0.12+fs*0.72);
   });
+  // 人臉辨識框（新增）：跟上面卡片框共用同一個 mapper()，因為都是從同一個 proc canvas 算出來的座標
+  Object.keys(faceTracks).forEach(function(seat){
+    var tr=faceTracks[seat];
+    if(now-tr.last>900){ if(now-tr.last>3000) delete faceTracks[seat]; return; }
+    if(!tr.box) return;
+    var b=tr.box, p0=M([b.x,b.y]), p1=M([b.x+b.width,b.y+b.height]);
+    var st=studentBySeat(+seat), m=st&&S.marks[st.seat];
+    var col = m ? statusColor(m.status) : '#4AA3FF';
+    var x=Math.min(p0[0],p1[0]), y=Math.min(p0[1],p1[1]), w=Math.abs(p1[0]-p0[0]), h=Math.abs(p1[1]-p0[1]);
+    octx.lineWidth=3; octx.strokeStyle=col; octx.strokeRect(x,y,w,h);
+    if(!st) return;
+    var label=pad(st.seat)+st.name+(m?'　'+statusName(m.status):'');
+    octx.font='700 16px "Noto Sans TC", system-ui, sans-serif';
+    var tw2=octx.measureText(label).width, bw2=tw2+20, bh2=28;
+    octx.fillStyle='rgba(18,20,26,.86)';
+    roundRect(octx, x, Math.max(0,y-bh2-4), bw2, bh2, bh2/2.4); octx.fill();
+    octx.fillStyle='#fff'; octx.textBaseline='alphabetic';
+    octx.fillText(label, x+10, Math.max(0,y-bh2-4)+bh2*0.68);
+  });
 }
 function roundRect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 
@@ -1073,10 +1420,10 @@ function renderStrip(){
     box.appendChild(s);
   });
 }
-function feed(st,status,time){
+function feed(st,status,time,method){
   var f=$('feed'), d=document.createElement('div');
   d.innerHTML='<i style="background:'+statusColor(status)+'"></i><em></em><span></span><small></small>';
-  d.querySelector('em').textContent=pad(st.seat); d.querySelector('span').textContent=st.name;
+  d.querySelector('em').textContent=pad(st.seat); d.querySelector('span').textContent=st.name+(method==='face'?' 👤':'');
   d.querySelector('small').textContent=statusName(status)+' '+time.slice(0,5);
   f.insertBefore(d, f.firstChild);
   while(f.children.length>4) f.removeChild(f.lastChild);
@@ -1121,16 +1468,14 @@ function flush(){
     setSync('err','寫入失敗，稍後重試');
   });
 }
-/* 即時輸入開著：每張卡一偵測到就立刻送出，並且每 1.2 秒巡一次保險。
-   即時輸入關著：完全不會自動送出——刷到的卡只會先累積在本機（畫面上看得到、但還沒真的寫進試算表），
-   一直到「結束點名」時才會一次寫入，或是你把即時輸入切回開啟，才會立刻把累積的都補送出去。
-   這樣兩種模式才會有真正感受得到的差異：關閉時攝影機掃描不會自動同步，只有手動點名（點座位改紀錄／
-   手動加分）才會照舊每次都直接寫入，不受這個開關影響。 */
+/* 即時輸入開著：每 1.2 秒巡一次（幾乎等於掃到就寫）。
+   即時輸入關著：拉長到每 5 秒才巡一次，讓佇列裡的卡片真的先累積起來批次送出，
+   兩種模式才會有實際感受得到的差異，不會不管開關都幾乎同時寫入。
+   （手動加分永遠不走這個佇列，adjustBonus 每次點擊都直接送出，不受這個開關影響。） */
 var flushTimer=null;
 function scheduleFlush(){
   if(flushTimer) clearTimeout(flushTimer);
-  if(!S.instant) return; // 關閉時不排程，佇列只會在結束點名或重新打開即時輸入時才送出
-  flushTimer=setTimeout(function(){ flush(); scheduleFlush(); }, 1200);
+  flushTimer=setTimeout(function(){ flush(); scheduleFlush(); }, S.instant ? 1200 : 5000);
 }
 scheduleFlush();
 window.addEventListener('beforeunload', function(e){ if(S.queue.length||S.inflight){ e.preventDefault(); e.returnValue=''; } });
@@ -1159,8 +1504,20 @@ function start(){
   }).catch(function(e){ toast('試算表錯誤：'+(e&&e.message||e),5000); });
   camP.then(function(){
     S.running=true; tracks={}; lastDetect=0;
+    faceTracks={}; lastFaceDetect=0;
     rafId=requestAnimationFrame(loop);
   }).catch(camError);
+  // 人臉辨識（新增）：跟上面點名流程平行進行，不會卡住開始點名的速度；
+  // 模型或資料還沒準備好之前，鏡頭已經先開了，準備好後這堂課後面偵測到的臉才會生效。
+  if(S.faceEnabled){
+    ensureFaceModels().catch(function(e){ toast('人臉辨識模型載入失敗，本次僅能用卡片點名：'+(e&&e.message||e), 5500); });
+    call('faceData', S.sheet).then(function(list){
+      var m={}; (list||[]).forEach(function(e){ m[e.seat]=e.descriptors; });
+      S.faceRoster=m;
+    }).catch(function(e){ S.faceRoster={}; toast('讀取人臉註冊資料失敗，本次僅能用卡片點名：'+(e&&e.message||e), 5500); });
+  } else {
+    S.faceRoster={};
+  }
   renderPhase(); phaseTimer=setInterval(renderPhase, 500);
   $('hudClass').firstChild.nodeValue=S.sheet; $('hudDate').textContent=S.roster?S.roster.dateKey:'';
   renderStrip();
@@ -1215,7 +1572,6 @@ function setInstant(v){
   S.instant=!!v;
   $('instantSwitch').setAttribute('aria-checked', String(S.instant));
   $('instantBtn').setAttribute('aria-pressed', String(S.instant));
-  if(S.instant) flush(); // 一開啟就把之前累積、還沒送出的立刻補送
   scheduleFlush();
   persist();
 }
@@ -1236,6 +1592,8 @@ function applyBootstrap(b){
   if(s.cam){ S.cam=s.cam; }
   if(s.instant){ S.instant=true; $('instantSwitch').setAttribute('aria-checked','true'); $('instantBtn').setAttribute('aria-pressed','true'); scheduleFlush(); }
   if(s.bonusMode){ S.bonusMode=true; $('bonusSwitch').setAttribute('aria-checked','true'); }
+  S.faceCounts = b.faceCounts || {};
+  if(s.faceEnabled) setFaceEnabled(true, true);
   if(s.sheet && S.classes.some(function(c){return c.sheet===s.sheet;})) S.sheet=s.sheet;
   renderRule(); renderClasses();
   if(S.cam!=='env'&&S.cam!=='user'){ var o=document.createElement('option'); o.value=S.cam; o.textContent='上次使用的攝影機'; $('camSel').appendChild(o); }
