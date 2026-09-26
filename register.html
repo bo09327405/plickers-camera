@@ -25,6 +25,8 @@ button,input,select{font:inherit;color:inherit}
 .brand h1{margin:0;font-size:30px;font-weight:900;position:relative;padding-bottom:8px;z-index:0;isolation:isolate}
 .brand h1::after{content:"";position:absolute;left:-4px;right:-6px;bottom:0;height:9px;background:var(--spike);transform:rotate(-1.6deg);z-index:-1;border-radius:1px;clip-path:polygon(0 12%,100% 0,99% 88%,1% 100%)}
 .brand p{margin:0 0 8px;color:var(--ink-2);font-size:13px}
+.whoami{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--ink-2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 6px 6px 14px}
+.whoami button{appearance:none;border:0;background:var(--wall);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:var(--ink)}
 
 .card{background:var(--paper);border-radius:12px;padding:22px 20px;box-shadow:0 10px 30px rgba(28,34,48,.08);display:flex;flex-direction:column;gap:16px}
 .card h2{margin:0;font-size:19px}
@@ -41,6 +43,8 @@ select.inp{font-size:15px}
 .cls[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
 .cls[aria-pressed="true"] span{color:#C9CED8}
 
+.whocard{border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:14px;font-size:15px;font-weight:700}
+
 .consentbox{max-height:260px;overflow:auto;border:1.5px solid var(--line);border-radius:8px;padding:14px;font-size:13px;color:var(--ink-2);white-space:pre-wrap;background:#fff}
 .agreerow{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}
 .agreerow input{margin-top:3px;flex:none;width:18px;height:18px}
@@ -48,9 +52,11 @@ select.inp{font-size:15px}
 
 .cam{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
 .cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam.flash::after{content:"";position:absolute;inset:0;background:#fff;animation:flashfx .35s ease-out}
+@keyframes flashfx{from{opacity:.85}to{opacity:0}}
 .dots{display:flex;gap:7px;justify-content:center}
-.dots i{width:12px;height:12px;border-radius:50%;background:var(--line);display:block}
-.dots i.on{background:var(--ontime)}
+.dots i{width:12px;height:12px;border-radius:50%;background:var(--line);display:block;transition:background .2s,transform .2s}
+.dots i.on{background:var(--ontime);transform:scale(1.15)}
 
 .acts{display:flex;flex-direction:column;gap:8px}
 .acts.row{flex-direction:row}
@@ -62,8 +68,8 @@ button.ghost{appearance:none;border:1.5px solid var(--line);background:#fff;heig
 
 .gate{position:fixed;inset:0;z-index:90;background:var(--ink);display:none;align-items:center;justify-content:center;padding:24px}
 .gate.on{display:flex}
-.gatecard{width:100%;max-width:340px;background:var(--paper);border-radius:12px;padding:32px 26px 26px;display:flex;flex-direction:column;gap:14px;box-shadow:0 24px 60px rgba(0,0,0,.35)}
-.gatepw{text-align:center;letter-spacing:.12em;font-size:18px}
+.gatecard{width:100%;max-width:340px;background:var(--paper);border-radius:12px;padding:32px 26px 26px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+#gSignInBtn{display:flex;justify-content:center;min-height:44px}
 .step{display:none;flex-direction:column;gap:16px}
 .step.on{display:flex}
 .toast{position:fixed;left:50%;bottom:calc(20px + var(--safe-b));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw}
@@ -73,24 +79,30 @@ button.ghost{appearance:none;border:1.5px solid var(--line);background:#fff;heig
 <body>
 
 <section class="gate on" id="gate">
-  <form class="gatecard" id="gateForm">
-    <div><h1 style="margin:0;font-size:26px;font-weight:900">學生人臉註冊</h1><p style="margin:6px 0 0;color:var(--ink-2);font-size:13px">請向老師索取本頁的註冊密碼</p></div>
-    <input class="inp gatepw" type="password" id="gatePw" placeholder="密碼" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-    <button class="go" type="submit" id="gateBtn">進入</button>
+  <div class="gatecard">
+    <div><h1 style="margin:0;font-size:26px;font-weight:900">學生人臉註冊</h1><p style="margin:6px 0 0;color:var(--ink-2);font-size:13px">請用你的 Google（學校）帳號登入，系統會自動核對你的身份</p></div>
+    <div id="gSignInBtn"></div>
     <p class="status-line err" id="gateErr" role="alert" aria-live="polite"></p>
-  </form>
+  </div>
 </section>
 
 <div class="wrap" id="app" style="display:none">
   <div class="brand"><h1>學生人臉註冊</h1><p>點名系統・臉部特徵註冊</p></div>
+  <div class="whoami"><span id="whoamiText"></span><button type="button" id="signOutBtn">登出</button></div>
 
   <div class="card step on" id="step1">
-    <h2>① 選擇班級與座號</h2>
-    <p class="hint">選擇你的班級</p>
-    <div class="classes" id="classes"><span class="hint">讀取班級中…</span></div>
-    <div class="field" id="studentField" style="display:none">
-      <label for="studentSel">選擇座號姓名（請確認是你本人）</label>
-      <select class="inp" id="studentSel"></select>
+    <h2>① 確認身份</h2>
+    <div id="step1Teacher" style="display:none">
+      <p class="hint">你是老師帳號，請選擇要協助註冊的班級</p>
+      <div class="classes" id="classes"><span class="hint">讀取班級中…</span></div>
+      <div class="field" id="studentField" style="display:none;margin-top:12px">
+        <label for="studentSel">選擇座號姓名</label>
+        <select class="inp" id="studentSel"></select>
+      </div>
+    </div>
+    <div id="step1Student" style="display:none">
+      <p class="hint">系統已經核對你登入的帳號，對應到：</p>
+      <div class="whocard" id="studentConfirmText"></div>
     </div>
     <button class="go" id="step1Next" disabled>下一步：同意書</button>
     <p class="status-line" id="status1"></p>
@@ -119,17 +131,13 @@ button.ghost{appearance:none;border:1.5px solid var(--line);background:#fff;heig
 
   <div class="card step" id="step3">
     <h2>③ 臉部掃描</h2>
-    <p class="hint">請找光線充足的地方，正對鏡頭拍攝 4 張不同角度的照片，只會存數字特徵值，不會存照片本身。</p>
-    <div class="cam"><video id="video" playsinline muted autoplay></video></div>
-    <p class="hint" id="camHint">準備好後按下方按鈕拍攝</p>
+    <p class="hint">請找光線充足的地方正對鏡頭，系統會自動連續拍攝 4 張、每拍到一張會提示下一個角度，不用按任何拍照按鈕。</p>
+    <div class="cam" id="camBox"><video id="video" playsinline muted autoplay></video></div>
+    <p class="hint" id="camHint">準備中…</p>
     <div class="dots" id="dots"></div>
     <div class="acts row">
-      <button class="ghost" id="shoot" style="flex:1">拍攝這一張</button>
-      <button class="ghost" id="retake" style="flex:1">全部重拍</button>
-    </div>
-    <div class="acts">
-      <button class="go" id="submitBtn" disabled>完成註冊</button>
-      <button class="ghost" id="step3Back">上一步</button>
+      <button class="ghost" id="rescan" style="flex:1">重新掃描</button>
+      <button class="ghost" id="step3Back" style="flex:1">上一步</button>
     </div>
     <p class="status-line" id="status3"></p>
   </div>
@@ -137,23 +145,25 @@ button.ghost{appearance:none;border:1.5px solid var(--line);background:#fff;heig
   <div class="card step" id="stepDone">
     <h2>🎉 註冊完成</h2>
     <p id="doneMsg"></p>
-    <div class="acts">
-      <button class="go" id="another">再幫另一位同學註冊</button>
-    </div>
+    <div class="acts" id="doneActs"></div>
   </div>
 </div>
 
 <div class="toast" id="toast" role="status"></div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 (function(){
 'use strict';
 var $=function(id){ return document.getElementById(id); };
 
 /* ====================================================================
- * 請填入跟 index.html 同一支 Apps Script 部署後的 /exec 網址。
+ * 請填入跟 Code.gs 同一個 GOOGLE_CLIENT_ID（Google Cloud Console 申請的
+ * OAuth 用戶端 ID，結尾是 .apps.googleusercontent.com），以及跟 index.html
+ * 同一支 Apps Script 部署後的 /exec 網址。兩邊沒填之前，登入跟送出都無法使用。
  * ==================================================================== */
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOqzz3A7wr8YEHQ5JHPDzZQZ-V6ok3bB0sm94qIagwx76V8pOD9KMO6Qm7DfGOk33P/exec';
+var GOOGLE_CLIENT_ID = 'PASTE_YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE.apps.googleusercontent.com';
 var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE') >= 0;
 
 var FACE_LIB_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js';
@@ -185,10 +195,10 @@ function ensureFaceModels(){
 
 var CONSENT_VERSION = 'v1';
 var CONSENT_TEXT =
-'【人臉辨識點名同意書】\n\n'+
+'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
-'2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
+'2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間、登入帳號。\n'+
 '3. 利用期間：自完成註冊之日起，至畢業／轉出班級，或本人（未成年由法定代理人）申請停用為止。\n'+
 '4. 利用對象：僅授課教師本人於點名系統中比對使用，不會提供第三人，也不會公開或用於其他用途。\n'+
 '5. 保管方式：以文字型態存放於學校內部試算表，非授課教師無法存取。\n'+
@@ -200,24 +210,26 @@ function pad(n){ return (n<10?'0':'')+n; }
 var toastT;
 function toast(msg,ms){ var t=$('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(function(){t.classList.remove('on');}, ms||2600); }
 
-var PW='';
+var ID_TOKEN='', IDENTITY=null;
 function buildBody_(action, args){
   switch(action){
-    case 'regClasses': return {action:'regClasses'};
-    case 'regRoster':  return {action:'regRoster', sheet:args[0]};
-    case 'faceEnroll': return {action:'faceEnroll', sheet:args[0].sheet, row:args[0].row, seat:args[0].seat, name:args[0].name, descriptors:args[0].descriptors, consent:args[0].consent, source:args[0].source};
+    case 'regIdentify': return {action:'regIdentify'};
+    case 'regClasses':  return {action:'regClasses'};
+    case 'regRoster':   return {action:'regRoster', sheet:args[0]};
+    case 'faceEnroll':  return {action:'faceEnroll', sheet:args[0].sheet, row:args[0].row, seat:args[0].seat, name:args[0].name, descriptors:args[0].descriptors, consent:args[0].consent, source:args[0].source};
   }
 }
 var DemoNames='伍少宇 朱維軒 余朔廷 吳宇軒 李翔方 孔令延 林子皓 林君謙'.split(' ');
 function call(action){
   var args=Array.prototype.slice.call(arguments,1);
   if(IS_DEMO){
+    if(action==='regIdentify') return Promise.resolve({role:'teacher', email:'demo@example.com'});
     if(action==='regClasses') return Promise.resolve([{sheet:'311',label:'311C',count:8}]);
     if(action==='regRoster') return Promise.resolve({sheet:args[0], students:DemoNames.map(function(n,i){return {seat:i+1,name:n,row:i+3};})});
     if(action==='faceEnroll') return Promise.resolve({ok:true, seat:args[0].seat, name:args[0].name, count:(args[0].descriptors||[]).length});
     return Promise.reject(new Error('示範模式尚未支援：'+action));
   }
-  var body=buildBody_(action,args); body.pw=PW;
+  var body=buildBody_(action,args); body.idToken=ID_TOKEN;
   return fetch(API_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body)})
     .then(function(r){ return r.text(); })
     .then(function(t){
@@ -237,6 +249,8 @@ var HINTS=['請正臉看鏡頭','請將臉稍微轉向左邊','請將臉稍微�
 function showStep(n){
   ['step1','step2','step3','stepDone'].forEach(function(id,i){ $(id).classList.toggle('on', i+1===n); });
 }
+
+/* ---------- ① 身份確認：老師走班級／座號挑選，學生直接由登入帳號比對出來 ---------- */
 function renderClasses(){
   var box=$('classes'); box.innerHTML='';
   if(!Reg.classes.length){ box.innerHTML='<span class="hint">找不到班級。</span>'; return; }
@@ -265,18 +279,40 @@ $('studentSel').onchange=function(){
   $('step1Next').disabled=!Reg.student;
 };
 $('step1Next').onclick=function(){ if(Reg.student){ $('consentText').textContent=CONSENT_TEXT; showStep(2); } };
+
+function afterLogin(identity){
+  IDENTITY=identity;
+  $('whoamiText').textContent = identity.role==='teacher' ? ('👩‍🏫 老師身份：'+identity.email) : ('🙋 '+identity.email);
+  if(identity.role==='teacher'){
+    $('step1Teacher').style.display=''; $('step1Student').style.display='none';
+    Reg.sheet=null; Reg.student=null; $('step1Next').disabled=true;
+    $('classes').innerHTML='<span class="hint">讀取班級中…</span>';
+    call('regClasses').then(function(list){ Reg.classes=list||[]; renderClasses(); })
+      .catch(function(e){ $('classes').innerHTML=''; $('status1').textContent='讀取班級失敗：'+(e&&e.message||e); });
+  } else {
+    $('step1Teacher').style.display='none'; $('step1Student').style.display='';
+    Reg.sheet=identity.sheet; Reg.student={seat:identity.seat, name:identity.name, row:identity.row};
+    $('studentConfirmText').textContent = identity.sheet+' 班　'+pad(identity.seat)+' 號　'+identity.name;
+    $('step1Next').disabled=false;
+  }
+  showStep(1);
+  $('gate').classList.remove('on'); $('app').style.display='';
+}
+
+/* ---------- ② 同意書 ---------- */
 $('step2Back').onclick=function(){ showStep(1); };
 $('step2Next').onclick=function(){
   if(!$('agree').checked){ toast('請先勾選同意才能繼續'); return; }
   var nm=$('signName').value.trim();
   if(!nm){ toast('請輸入簽署人姓名'); return; }
   Reg.signName=nm; Reg.signRole=$('signRole').value;
-  Reg.descriptors=[]; Reg.captured=0; renderDots();
-  $('submitBtn').disabled=true; $('camHint').textContent=HINTS[0]; $('status3').textContent='';
-  showStep(3);
-  openCamera().catch(function(e){ $('status3').textContent='無法開啟鏡頭：'+(e&&e.message||e); });
+  enterStep3();
 };
-$('step3Back').onclick=function(){ stopCamera(); showStep(2); };
+
+/* ---------- ③ 臉部掃描：自動連拍，不用手動按快門 ---------- */
+var regCapturing=false, regCaptureRAF=null, regBusyDetect=false, regStableCount=0, regLastTick=0;
+var CAPTURE_STABLE_FRAMES=3, CAPTURE_INTERVAL=350;
+
 function renderDots(){
   var box=$('dots'); box.innerHTML='';
   for(var i=0;i<Reg.needed;i++){ var d=document.createElement('i'); if(i<Reg.captured) d.className='on'; box.appendChild(d); }
@@ -287,66 +323,112 @@ function openCamera(){
     .then(function(s){ Reg.stream=s; $('video').srcObject=s; return $('video').play(); });
 }
 function stopCamera(){ if(Reg.stream){ Reg.stream.getTracks().forEach(function(t){t.stop();}); Reg.stream=null; } }
-$('shoot').onclick=function(){
-  $('status3').textContent='偵測中…';
-  ensureFaceModels().then(function(){
-    return faceapi.detectSingleFace($('video'), new faceapi.TinyFaceDetectorOptions({inputSize:320, scoreThreshold:0.5}))
-      .withFaceLandmarks().withFaceDescriptor();
-  }).then(function(res){
-    if(!res){ $('status3').textContent='沒有偵測到臉，請正對鏡頭、光線充足再試一次'; return; }
-    Reg.descriptors.push(Array.prototype.slice.call(res.descriptor));
-    Reg.captured++; renderDots(); $('status3').textContent='';
-    if(Reg.captured>=Reg.needed){ $('camHint').textContent='拍攝完成，可以送出註冊了'; $('submitBtn').disabled=false; }
-    else $('camHint').textContent=HINTS[Reg.captured]||HINTS[0];
-  }).catch(function(e){ $('status3').textContent='人臉辨識模型載入失敗：'+(e&&e.message||e); });
-};
-$('retake').onclick=function(){
-  Reg.descriptors=[]; Reg.captured=0; renderDots(); $('submitBtn').disabled=true; $('camHint').textContent=HINTS[0]; $('status3').textContent='';
-};
-$('submitBtn').onclick=function(){
-  if(!Reg.student || Reg.descriptors.length<Reg.needed) return;
-  $('submitBtn').disabled=true; $('status3').textContent='送出中…';
+function flashCam(){ var b=$('camBox'); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+
+function enterStep3(){
+  Reg.descriptors=[]; Reg.captured=0; renderDots();
+  $('camHint').textContent='準備鏡頭中…'; $('status3').textContent='';
+  showStep(3);
+  openCamera().then(function(){
+    $('camHint').textContent='載入辨識模型中…（第一次使用會慢一點）';
+    return ensureFaceModels();
+  }).then(function(){
+    $('camHint').textContent=HINTS[0];
+    startAutoCapture();
+  }).catch(function(e){ $('camHint').textContent='初始化失敗'; $('status3').textContent=(e&&e.message||e); });
+}
+function startAutoCapture(){ regCapturing=true; regStableCount=0; regLastTick=0; regCaptureRAF=requestAnimationFrame(captureTick); }
+function stopAutoCapture(){ regCapturing=false; if(regCaptureRAF) cancelAnimationFrame(regCaptureRAF); }
+function captureTick(t){
+  if(!regCapturing) return;
+  regCaptureRAF=requestAnimationFrame(captureTick);
+  if(regBusyDetect || t-regLastTick<CAPTURE_INTERVAL) return;
+  regLastTick=t; regBusyDetect=true;
+  faceapi.detectSingleFace($('video'), new faceapi.TinyFaceDetectorOptions({inputSize:256, scoreThreshold:0.5}))
+    .withFaceLandmarks().withFaceDescriptor()
+    .then(function(res){
+      regBusyDetect=false;
+      if(!res){ regStableCount=0; $('status3').textContent='沒有偵測到臉，請正對鏡頭、光線充足一點'; return; }
+      regStableCount++;
+      $('status3').textContent = regStableCount<CAPTURE_STABLE_FRAMES ? '偵測到臉，保持不動…' : '';
+      if(regStableCount<CAPTURE_STABLE_FRAMES) return;
+      regStableCount=0;
+      Reg.descriptors.push(Array.prototype.slice.call(res.descriptor));
+      Reg.captured++; renderDots(); flashCam();
+      if(Reg.captured>=Reg.needed){
+        stopAutoCapture();
+        $('camHint').textContent='拍攝完成，送出註冊中…';
+        submitEnroll();
+      } else {
+        $('camHint').textContent=HINTS[Reg.captured];
+      }
+    }).catch(function(){ regBusyDetect=false; });
+}
+$('rescan').onclick=function(){ stopAutoCapture(); enterStep3(); };
+$('step3Back').onclick=function(){ stopAutoCapture(); stopCamera(); showStep(2); };
+
+function submitEnroll(){
   call('faceEnroll', {
     sheet:Reg.sheet, row:Reg.student.row, seat:Reg.student.seat, name:Reg.student.name,
-    descriptors:Reg.descriptors, consent:{name:Reg.signName, role:Reg.signRole, version:CONSENT_VERSION}, source:'self'
+    descriptors:Reg.descriptors, consent:{name:Reg.signName, role:Reg.signRole, version:CONSENT_VERSION},
+    source: (IDENTITY && IDENTITY.role==='teacher') ? 'teacher' : 'self'
   }).then(function(r){
     stopCamera();
     $('doneMsg').textContent=pad(r.seat)+' '+r.name+' 已完成人臉註冊，之後老師開啟人臉辨識點名時就可以直接被認出來了。';
+    renderDoneActs();
     showStep(4);
-  }).catch(function(e){ $('submitBtn').disabled=false; $('status3').textContent='送出失敗：'+(e&&e.message||e); });
-};
-$('another').onclick=function(){
-  Reg.student=null; Reg.descriptors=[]; Reg.captured=0; $('step1Next').disabled=true; $('studentSel').value='';
-  showStep(1);
-};
-
-/* ---------- 密碼鎖 ---------- */
-function openGate(msg){ $('gate').classList.add('on'); $('gateErr').textContent=msg||''; setTimeout(function(){ $('gatePw').focus(); },50); }
-function closeGate(){ $('gate').classList.remove('on'); $('app').style.display=''; }
-function bootAfterAuth(){
-  $('classes').innerHTML='<span class="hint">讀取班級中…</span>';
-  call('regClasses').then(function(list){ Reg.classes=list||[]; renderClasses(); })
-    .catch(function(e){ $('classes').innerHTML=''; $('status1').textContent='讀取班級失敗：'+(e&&e.message||e); });
-}
-$('gateForm').addEventListener('submit', function(ev){
-  ev.preventDefault();
-  var pw=$('gatePw').value; if(!pw) return;
-  PW=pw; $('gateBtn').disabled=true; $('gateErr').textContent='驗證中…';
-  call('regClasses').then(function(list){
-    try{ sessionStorage.setItem('rollcall_reg_pw', pw); }catch(e){}
-    Reg.classes=list||[];
-    $('gateBtn').disabled=false; closeGate(); renderClasses();
   }).catch(function(e){
-    $('gateBtn').disabled=false; PW='';
-    $('gateErr').textContent = e && e.code==='AUTH' ? '密碼錯誤，請再試一次。' : ('連線失敗：'+(e&&e.message||e));
-    $('gatePw').select();
+    $('camHint').textContent='送出失敗，請按下方重新掃描再試一次';
+    $('status3').textContent=(e&&e.message||e);
   });
-});
+}
 
-if(IS_DEMO){ closeGate(); bootAfterAuth(); }
-else {
-  var saved=''; try{ saved=sessionStorage.getItem('rollcall_reg_pw')||''; }catch(e){}
-  if(saved){ PW=saved; closeGate(); bootAfterAuth(); } else { openGate(); }
+/* ---------- 完成畫面：老師可以連續幫下一位註冊，學生就結束 ---------- */
+function renderDoneActs(){
+  var box=$('doneActs'); box.innerHTML='';
+  if(IDENTITY && IDENTITY.role==='teacher'){
+    var b=document.createElement('button'); b.type='button'; b.className='go'; b.textContent='再幫另一位同學註冊';
+    b.onclick=function(){ Reg.student=null; $('studentSel').value=''; $('step1Next').disabled=true; showStep(1); };
+    box.appendChild(b);
+  } else {
+    var p=document.createElement('p'); p.className='hint'; p.textContent='可以直接關閉這個分頁了。';
+    box.appendChild(p);
+  }
+}
+
+/* ---------- Google 登入 ---------- */
+function handleCredential(response){
+  $('gateErr').textContent='驗證中…';
+  ID_TOKEN=response.credential;
+  call('regIdentify').then(function(identity){
+    afterLogin(identity);
+  }).catch(function(e){
+    ID_TOKEN='';
+    $('gateErr').textContent='登入驗證失敗：'+(e&&e.message||e);
+  });
+}
+$('signOutBtn').onclick=function(){
+  stopAutoCapture(); stopCamera();
+  ID_TOKEN=''; IDENTITY=null; Reg.sheet=null; Reg.student=null;
+  try{ if(window.google&&google.accounts&&google.accounts.id) google.accounts.id.disableAutoSelect(); }catch(e){}
+  $('app').style.display='none'; $('gate').classList.add('on'); $('gateErr').textContent='';
+};
+
+if(IS_DEMO){
+  call('regIdentify').then(afterLogin);
+} else {
+  window.onload=function(){
+    var tries=0;
+    (function waitGsi(){
+      if(window.google && google.accounts && google.accounts.id){
+        google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential });
+        google.accounts.id.renderButton($('gSignInBtn'), { theme:'outline', size:'large', text:'signin_with', shape:'pill', locale:'zh_TW' });
+        return;
+      }
+      if(++tries>100){ $('gateErr').textContent='Google 登入元件載入失敗，請確認網路連線後重新整理頁面'; return; }
+      setTimeout(waitGsi,100);
+    })();
+  };
 }
 })();
 </script>
