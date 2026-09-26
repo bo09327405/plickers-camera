@@ -1023,7 +1023,8 @@ function checkIn(card){
   S.queue.push({row:st.row,seat:st.seat,status:status,time:time,card:card});
   feed(st,status,time); beep(status); renderStrip(); renderTally();
   if(navigator.vibrate) navigator.vibrate(status==='1'?30:[30,60,30]);
-  if(S.instant) flush(); // 即時輸入：不等 1.2 秒批次，立刻寫入試算表
+  if(S.instant) flush(); // 即時輸入：立刻寫入試算表
+  else setSync('busy', S.queue.length+' 筆先存在本機，結束點名時才會寫入'); // 關閉：老實告知還沒真的送出
 }
 
 function draw(now){
@@ -1120,14 +1121,16 @@ function flush(){
     setSync('err','寫入失敗，稍後重試');
   });
 }
-/* 即時輸入開著：每 1.2 秒巡一次（幾乎等於掃到就寫）。
-   即時輸入關著：拉長到每 5 秒才巡一次，讓佇列裡的卡片真的先累積起來批次送出，
-   兩種模式才會有實際感受得到的差異，不會不管開關都幾乎同時寫入。
-   （手動加分永遠不走這個佇列，adjustBonus 每次點擊都直接送出，不受這個開關影響。） */
+/* 即時輸入開著：每張卡一偵測到就立刻送出，並且每 1.2 秒巡一次保險。
+   即時輸入關著：完全不會自動送出——刷到的卡只會先累積在本機（畫面上看得到、但還沒真的寫進試算表），
+   一直到「結束點名」時才會一次寫入，或是你把即時輸入切回開啟，才會立刻把累積的都補送出去。
+   這樣兩種模式才會有真正感受得到的差異：關閉時攝影機掃描不會自動同步，只有手動點名（點座位改紀錄／
+   手動加分）才會照舊每次都直接寫入，不受這個開關影響。 */
 var flushTimer=null;
 function scheduleFlush(){
   if(flushTimer) clearTimeout(flushTimer);
-  flushTimer=setTimeout(function(){ flush(); scheduleFlush(); }, S.instant ? 1200 : 5000);
+  if(!S.instant) return; // 關閉時不排程，佇列只會在結束點名或重新打開即時輸入時才送出
+  flushTimer=setTimeout(function(){ flush(); scheduleFlush(); }, 1200);
 }
 scheduleFlush();
 window.addEventListener('beforeunload', function(e){ if(S.queue.length||S.inflight){ e.preventDefault(); e.returnValue=''; } });
@@ -1212,6 +1215,7 @@ function setInstant(v){
   S.instant=!!v;
   $('instantSwitch').setAttribute('aria-checked', String(S.instant));
   $('instantBtn').setAttribute('aria-pressed', String(S.instant));
+  if(S.instant) flush(); // 一開啟就把之前累積、還沒送出的立刻補送
   scheduleFlush();
   persist();
 }
