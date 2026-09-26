@@ -421,8 +421,16 @@ if(IS_DEMO){
     var tries=0;
     (function waitGsi(){
       if(window.google && google.accounts && google.accounts.id){
-        google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential });
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleCredential,
+          auto_select: true,        // 瀏覽器本來就登入著 Google、且之前同意過的話，會自動選那個帳號完成登入，不用手動點
+          cancel_on_tap_outside: false
+        });
         google.accounts.id.renderButton($('gSignInBtn'), { theme:'outline', size:'large', text:'signin_with', shape:'pill', locale:'zh_TW' });
+        // 嘗試自動彈出 One Tap／自動選取登入；如果瀏覽器封鎖第三方 Cookie、使用者之前關掉過
+        // One Tap、或同一瀏覽器登入多組帳號等情況會被跳過，這時上面手動的登入按鈕仍然可以用。
+        try{ google.accounts.id.prompt(); }catch(e){}
         return;
       }
       if(++tries>100){ $('gateErr').textContent='Google 登入元件載入失敗，請確認網路連線後重新整理頁面'; return; }
