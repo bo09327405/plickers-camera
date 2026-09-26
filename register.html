@@ -175,8 +175,8 @@ var $=function(id){ return document.getElementById(id); };
  * OAuth 用戶端 ID，結尾是 .apps.googleusercontent.com），以及跟 index.html
  * 同一支 Apps Script 部署後的 /exec 網址。兩邊沒填之前，登入跟送出都無法使用。
  * ==================================================================== */
-var API_URL = 'https://script.google.com/macros/s/AKfycbxgOCnwLhR7FeYgv8Nn7GhSNBApONsGTQAYW-PYRNgz_dpESSYRVB4RCP3fXSONTQ_V/exec';
-var GOOGLE_CLIENT_ID = '459536923115-0shnjk9m762klapudh6fhk1ph6pks8db.apps.googleusercontent.com';
+var API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+var GOOGLE_CLIENT_ID = 'PASTE_YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE.apps.googleusercontent.com';
 var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE') >= 0;
 
 var FACE_LIB_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js';
@@ -208,7 +208,7 @@ function ensureFaceModels(){
 
 var CONSENT_VERSION = 'v1';
 var CONSENT_TEXT =
-'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
+'【表演藝術課-臉部辨識授權同意書】\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間、登入帳號。\n'+
@@ -309,7 +309,22 @@ $('studentSel').onchange=function(){
   Reg.student=Reg.students.filter(function(st){ return st.seat===seat; })[0]||null;
   updateReregWarn();
 };
-$('step1Next').onclick=function(){ if(!$('step1Next').disabled && Reg.student){ $('consentText').textContent=CONSENT_TEXT; showStep(2); } };
+/* 手機瀏覽器（尤其 iOS Safari）規定 speechSynthesis.speak() 一定要在使用者點擊當下
+   同步呼叫過一次，之後才允許在非同步流程（例如拍照偵測完成後）裡繼續發聲，
+   不然即使呼叫了 speak() 也會完全沒有聲音、不會報錯。這裡在幾個真正的按鈕點擊事件裡
+   先同步呼叫一次（音量設 0，使用者感覺不到），把語音權限「解鎖」給後面的流程用。 */
+var speechUnlocked=false;
+function unlockSpeech(){
+  if(speechUnlocked || !('speechSynthesis' in window)) return;
+  speechUnlocked=true;
+  try{
+    var u=new SpeechSynthesisUtterance(' ');
+    u.volume=0; u.lang='zh-TW';
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+$('step1Next').onclick=function(){ if(!$('step1Next').disabled && Reg.student){ unlockSpeech(); $('consentText').textContent=CONSENT_TEXT; showStep(2); } };
 
 function afterLogin(identity){
   IDENTITY=identity;
@@ -337,6 +352,7 @@ $('step2Next').onclick=function(){
   var nm=$('signName').value.trim();
   if(!nm){ toast('請輸入簽署人姓名'); return; }
   Reg.signName=nm; Reg.signRole=$('signRole').value;
+  unlockSpeech();
   enterStep3();
 };
 
