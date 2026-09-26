@@ -106,6 +106,9 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .linkbtn:hover{border-color:var(--ink-2)}
 .regbody{padding:24px;display:flex;flex-direction:column;gap:14px;max-height:80vh;overflow:auto}
 .regbody h3{margin:0;font-size:20px}
+.reghead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.regxbtn{appearance:none;border:0;background:transparent;width:34px;height:34px;border-radius:8px;font-size:20px;line-height:1;cursor:pointer;color:var(--ink-2)}
+.regxbtn:hover{background:var(--wall)}
 .regstep{display:flex;flex-direction:column;gap:14px}
 .consentbox{max-height:220px;overflow:auto;border:1.5px solid var(--line);border-radius:8px;padding:14px;font-size:13px;color:var(--ink-2);white-space:pre-wrap;background:var(--paper)}
 .agreerow{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}
@@ -422,7 +425,7 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
 
 <dialog id="regDlg" aria-label="學生人臉註冊">
   <div class="regbody">
-    <h3>學生人臉註冊</h3>
+    <div class="reghead"><h3>學生人臉註冊</h3><button type="button" class="regxbtn" id="regCloseX" aria-label="關閉，回到點名畫面">✕</button></div>
 
     <div class="regstep" id="regStep1">
       <p class="hint">選擇班級</p>
@@ -1065,7 +1068,7 @@ document.addEventListener('click', closeBonus);
  * ==================================================================== */
 var CONSENT_VERSION = 'v1'; // 要跟 Code.gs 裡的 CONSENT_VERSION 對應；改了同意書文字記得兩邊都更新
 var CONSENT_TEXT =
-'【表演藝術課-臉部辨識授權同意書】\n\n'+
+'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
@@ -1146,13 +1149,28 @@ $('openRegBtn').onclick=function(){
   }
   if(typeof $('regDlg').showModal==='function') $('regDlg').showModal(); else $('regDlg').setAttribute('open','');
 };
-$('regStep1Next').onclick=function(){ if(!$('regStep1Next').disabled && Reg.student) regShowStep(2); };
+/* 手機瀏覽器（尤其 iOS Safari）規定 speechSynthesis.speak() 一定要在使用者點擊當下
+   同步呼叫過一次，之後才允許在非同步流程（例如拍照偵測完成後）裡繼續發聲，
+   不然即使呼叫了 speak() 也會完全沒有聲音、不會報錯。這裡在真正的按鈕點擊事件裡
+   先同步呼叫一次（音量設 0，使用者感覺不到），把語音權限「解鎖」給後面的流程用。 */
+var regSpeechUnlocked=false;
+function regUnlockSpeech(){
+  if(regSpeechUnlocked || !('speechSynthesis' in window)) return;
+  regSpeechUnlocked=true;
+  try{
+    var u=new SpeechSynthesisUtterance(' ');
+    u.volume=0; u.lang='zh-TW';
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+$('regStep1Next').onclick=function(){ if(!$('regStep1Next').disabled && Reg.student){ regUnlockSpeech(); regShowStep(2); } };
 $('regStep2Back').onclick=function(){ regShowStep(1); };
 $('regStep2Next').onclick=function(){
   if(!$('regAgree').checked){ toast('請先勾選同意才能繼續'); return; }
   var nm=$('regSignName').value.trim();
   if(!nm){ toast('請輸入簽署人姓名'); return; }
   Reg.signName=nm; Reg.signRole=$('regSignRole').value;
+  regUnlockSpeech();
   regEnterStep3();
 };
 $('regStep3Back').onclick=function(){ regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){} regShowStep(2); };
@@ -1287,7 +1305,16 @@ $('regAnother').onclick=function(){
   Reg.student=null; Reg.descriptors=[]; Reg.captured=0; regUpdateReregWarn();
   $('regStudentSel').value=''; regShowStep(1);
 };
-$('regClose').onclick=function(){ regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){} $('regDlg').close(); };
+function closeRegDlg(){
+  regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){}
+  var d=$('regDlg');
+  if(typeof d.close==='function'){ try{ d.close(); }catch(e){} }
+  d.removeAttribute('open'); // 保險：就算瀏覽器的 <dialog> 支援不完整，直接拔掉 open 屬性也一定會關閉
+}
+$('regClose').onclick=closeRegDlg;
+$('regCloseX').onclick=closeRegDlg;
+// 點背景（對話框本體以外的半透明遮罩區）也能關閉，跟大部分 App 的彈出視窗習慣一致
+$('regDlg').addEventListener('click', function(ev){ if(ev.target===$('regDlg')) closeRegDlg(); });
 $('regDlg').addEventListener('close', function(){ regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){} });
 
 function persist(){
