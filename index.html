@@ -739,6 +739,11 @@ var IS_DEMO = !API_URL || API_URL.indexOf('PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE'
 var FACE_LIB_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js';
 var FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
 var FACE_MATCH_THRESHOLD = 0.5; // 距離門檻，越小越嚴格；face-api 官方範例常用 0.5~0.6
+// TinyFaceDetector 內部會把畫面「硬塞縮小」成 inputSize×inputSize 再去偵測，
+// 原本用 224 對近距離夠用，但距離一拉遠、臉在畫面裡本來就小，縮到 224 之後幾乎沒細節可看，
+// 就會偵測不到。調大 inputSize 能讓遠處的小臉保留比較多細節，代價是每次偵測稍微慢一點，
+// 依裝置效能分兩級，跟下面 PROC_W 用同一套判斷方式。
+var FACE_DETECT_INPUT_SIZE = (navigator.hardwareConcurrency||4) >= 6 ? 512 : 416;
 var faceLibPromise = null, faceReady = false, faceModelsPromise = null;
 function loadFaceApiLib(){
   if (faceLibPromise) return faceLibPromise;
@@ -1071,7 +1076,7 @@ document.addEventListener('click', closeBonus);
  * ==================================================================== */
 var CONSENT_VERSION = 'v1'; // 要跟 Code.gs 裡的 CONSENT_VERSION 對應；改了同意書文字記得兩邊都更新
 var CONSENT_TEXT =
-'【表演藝術課-臉部辨識授權同意書】\n\n'+
+'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
@@ -1456,7 +1461,7 @@ function matchFace(descriptor){
 function detectFaces(){
   // 重用 PlickersVision 已經畫在 proc 這個 canvas 上的當下畫面，不用另外再截一次圖，
   // 座標系統也因此跟卡片框一樣可以直接用同一個 mapper() 換算成螢幕座標。
-  return faceapi.detectAllFaces(proc, new faceapi.TinyFaceDetectorOptions({inputSize:224, scoreThreshold:0.5}))
+  return faceapi.detectAllFaces(proc, new faceapi.TinyFaceDetectorOptions({inputSize:FACE_DETECT_INPUT_SIZE, scoreThreshold:0.4}))
     .withFaceLandmarks().withFaceDescriptors()
     .then(function(results){
       var now=performance.now();
@@ -1464,7 +1469,7 @@ function detectFaces(){
         var seat=matchFace(res.descriptor);
         if(seat==null) return;
         var tr=faceTracks[seat];
-        if(!tr || now-tr.last>1500){ tr=faceTracks[seat]={hits:0,last:now}; }
+        if(!tr || now-tr.last>2200){ tr=faceTracks[seat]={hits:0,last:now}; }
         tr.hits++; tr.last=now; tr.box=res.detection.box;
         if(tr.hits>=2 && !S.marks[seat]) checkIn(seat,'face');
       });
