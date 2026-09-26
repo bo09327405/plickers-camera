@@ -132,6 +132,23 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 #regDlg{border:0;border-radius:12px;padding:0;max-width:480px;width:calc(100% - 32px);color:var(--ink);background:var(--paper)}
 #regDlg::backdrop{background:rgba(10,12,18,.6)}
 
+/* ---- 全班合照批次辨識（新增） ---- */
+.gpoverlay{display:none;position:fixed;inset:0;z-index:95;background:rgba(10,12,18,.65);align-items:center;justify-content:center;padding:20px}
+.gpoverlay.on{display:flex}
+.gpcard{width:100%;max-width:440px;max-height:82vh;overflow:auto;background:var(--paper);color:var(--ink);border-radius:12px;padding:24px}
+.gpcard h3{margin:0 0 6px}
+.gpstate{display:flex;flex-direction:column;gap:12px}
+.spinner{width:36px;height:36px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--spike);animation:gpspin .8s linear infinite;margin:8px auto}
+@keyframes gpspin{to{transform:rotate(360deg)}}
+#gpBusy{align-items:center;text-align:center}
+.gplist{display:flex;flex-direction:column;gap:2px;max-height:38vh;overflow:auto;border:1.5px solid var(--line);border-radius:8px}
+.gprow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.gprow:last-child{border-bottom:0}
+.gprow input{width:18px;height:18px;flex:none}
+.gprow b{font-variant-numeric:tabular-nums}
+.gprow small{color:var(--ink-2);margin-left:auto}
+.gprow.already{opacity:.55}
+
 .go{appearance:none;border:0;margin-top:auto;height:64px;border-radius:8px;background:var(--ink);color:#fff;font-size:20px;font-weight:900;letter-spacing:.2em;cursor:pointer;position:relative;overflow:hidden}
 .go::before{content:"";position:absolute;left:0;top:0;bottom:0;width:10px;background:var(--spike)}
 .go:hover{background:#2A3246}
@@ -406,12 +423,36 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
       <button class="btn" id="flipBtn" aria-label="切換鏡頭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/></svg><span class="t">切換鏡頭</span></button>
       <button class="btn" id="soundBtn" aria-pressed="true" aria-label="提示音"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10z"/><path id="wave" d="M16 9a4 4 0 0 1 0 6"/></svg><span class="t">提示音</span></button>
       <button class="btn" id="instantBtn" aria-pressed="false" aria-label="即時輸入"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg><span class="t">即時輸入</span></button>
+      <button class="btn" id="groupPhotoBtn" aria-label="全班合照辨識" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.2 3.1-5.5 7-5.5s7 2.3 7 5.5"/><circle cx="17.3" cy="9" r="2.2"/><path d="M15.8 13.1c2.5.4 4.2 2.1 4.2 4.4"/></svg><span class="t">全班合照</span></button>
       <div class="sync" id="sync" data-st="ok"><i></i><span id="syncText">已同步</span></div>
       <button class="btn end" id="endBtn"><span class="t">結束點名</span></button>
     </div>
   </div>
   <div class="camerr" id="camerr"><div><h3>無法開啟鏡頭</h3><p id="camerrMsg"></p><button class="btn end" style="margin:0" id="camerrBack">返回設定</button></div></div>
 </section>
+
+<div class="gpoverlay" id="gpOverlay">
+  <div class="gpcard" id="gpCard">
+    <div class="gpstate" id="gpBusy">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="gpBusyText">拍攝畫面中…</p>
+    </div>
+    <div class="gpstate" id="gpReview" style="display:none">
+      <h3>辨識結果</h3>
+      <p class="hint" id="gpSummary"></p>
+      <div class="gplist" id="gpList"></div>
+      <div class="regacts">
+        <button type="button" id="gpCancel">取消，都不送出</button>
+        <button type="button" class="pri" id="gpConfirm">確認，送出勾選的人</button>
+      </div>
+    </div>
+    <div class="gpstate" id="gpError" style="display:none">
+      <h3>辨識失敗</h3>
+      <p class="hint" id="gpErrorText"></p>
+      <div class="regacts"><button type="button" id="gpErrorClose">關閉</button></div>
+    </div>
+  </div>
+</div>
 
 <dialog id="endDlg"><div class="dlg">
   <h3>結束點名</h3>
@@ -768,6 +809,18 @@ function ensureFaceModels(){
     ]);
   }).then(function(){ faceReady = true; }).catch(function(e){ faceModelsPromise = null; throw e; });
   return faceModelsPromise;
+}
+/* 「全班合照」批次辨識用的模型：SSD MobileNetV1，比即時點名用的 TinyFaceDetector 精準、
+   對小臉／多張臉的偵測能力也比較好，但運算量重很多，所以只有按下「全班合照」按鈕時才會
+   另外載入，不會拖慢平常刷卡／刷臉點名的速度。 */
+var ssdReady=false, ssdModelPromise=null;
+function ensureGroupPhotoModel(){
+  if (ssdReady) return Promise.resolve();
+  if (ssdModelPromise) return ssdModelPromise;
+  ssdModelPromise = ensureFaceModels().then(function(){
+    return faceapi.nets.ssdMobilenetv1.loadFromUri(FACE_MODEL_URL);
+  }).then(function(){ ssdReady = true; }).catch(function(e){ ssdModelPromise = null; throw e; });
+  return ssdModelPromise;
 }
 
 /* ---------- 呼叫後端（Promise 化）---------- */
@@ -1476,6 +1529,81 @@ function detectFaces(){
     });
 }
 
+/* ====================================================================
+ * 全班合照批次辨識（新增）：拍一張畫面，用比較準但比較慢的 SSD MobileNetV1
+ * 一次辨識畫面裡所有人，列出結果讓老師勾選確認後才送出，不是即時、自動記錄。
+ * 跟上面「即時走過鏡頭」的人臉辨識是兩套獨立機制，互不影響、也可以搭配著用。
+ * ==================================================================== */
+function gpShow(state, msg){
+  $('gpOverlay').classList.add('on');
+  ['gpBusy','gpReview','gpError'].forEach(function(id){ $(id).style.display = (id===state) ? '' : 'none'; });
+  if(state==='gpBusy' && msg) $('gpBusyText').textContent=msg;
+  if(state==='gpError' && msg) $('gpErrorText').textContent=msg;
+}
+function gpHide(){ $('gpOverlay').classList.remove('on'); }
+function runGroupPhotoScan(){
+  if(!S.faceEnabled){ toast('請先在設定裡打開「人臉辨識點名」才能使用這個功能'); return; }
+  if(!video.videoWidth || !video.videoHeight){ toast('鏡頭畫面還沒準備好，請稍等一下再試'); return; }
+  var canvas=document.createElement('canvas');
+  canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+  canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+  gpShow('gpBusy','載入辨識模型中…（第一次使用會慢一點）');
+  ensureGroupPhotoModel().then(function(){
+    $('gpBusyText').textContent='辨識畫面中，請稍候…（可能需要幾秒鐘）';
+    return faceapi.detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({minConfidence:0.5, maxResults:100}))
+      .withFaceLandmarks().withFaceDescriptors();
+  }).then(function(results){
+    var matched=[], seenSeats={}, unmatched=0;
+    results.forEach(function(res){
+      var seat=matchFace(res.descriptor);
+      if(seat==null){ unmatched++; return; }
+      if(seenSeats[seat]) return; // 同一個人在畫面裡因角度重複偵測到兩次，只算一筆
+      seenSeats[seat]=true;
+      var st=studentBySeat(seat);
+      if(!st) return;
+      matched.push({ seat:seat, name:st.name, already: !!S.marks[st.seat] });
+    });
+    matched.sort(function(a,b){ return a.seat-b.seat; });
+    gpRenderReview(results.length, matched, unmatched);
+  }).catch(function(e){
+    gpShow('gpError', (e&&e.message||e));
+  });
+}
+function gpRenderReview(totalFaces, matched, unmatched){
+  var already = matched.filter(function(m){ return m.already; }).length;
+  var fresh = matched.length - already;
+  var lines=['這張畫面裡偵測到 '+totalFaces+' 張臉，對上名單的有 '+matched.length+' 位（'+fresh+' 位可以新記錄、'+already+' 位已經點過名）。'];
+  if(unmatched>0) lines.push('另外 '+unmatched+' 張臉沒有比對到任何已註冊的學生，可能是尚未完成人臉註冊，請用卡片或手動點名補上。');
+  $('gpSummary').textContent=lines.join('');
+  var box=$('gpList'); box.innerHTML='';
+  if(!matched.length){
+    box.innerHTML='<div class="gprow"><span class="hint">沒有辨識到任何已註冊的學生。</span></div>';
+  }
+  matched.forEach(function(m){
+    var row=document.createElement('label'); row.className='gprow'+(m.already?' already':'');
+    var cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!m.already; cb.disabled=m.already; cb.dataset.seat=m.seat;
+    var b=document.createElement('b'); b.textContent=pad(m.seat);
+    var span=document.createElement('span'); span.textContent=m.name;
+    var small=document.createElement('small'); small.textContent=m.already?'已點過名':'';
+    row.appendChild(cb); row.appendChild(b); row.appendChild(span); row.appendChild(small);
+    box.appendChild(row);
+  });
+  gpShow('gpReview');
+}
+$('groupPhotoBtn').onclick=runGroupPhotoScan;
+$('gpCancel').onclick=gpHide;
+$('gpErrorClose').onclick=gpHide;
+$('gpConfirm').onclick=function(){
+  var checks=$('gpList').querySelectorAll('input[type=checkbox]:checked:not(:disabled)');
+  var n=0;
+  Array.prototype.forEach.call(checks, function(cb){
+    var seat=+cb.dataset.seat;
+    if(!S.marks[seat]){ checkIn(seat,'face'); n++; }
+  });
+  gpHide();
+  if(n>0) toast('已送出 '+n+' 位學生的點名紀錄');
+};
+
 function studentBySeat(seat){
   if(!S.roster) return null;
   for(var i=0;i<S.roster.students.length;i++) if(S.roster.students[i].seat===seat) return S.roster.students[i];
@@ -1662,6 +1790,7 @@ function start(){
   }).catch(camError);
   // 人臉辨識（新增）：跟上面點名流程平行進行，不會卡住開始點名的速度；
   // 模型或資料還沒準備好之前，鏡頭已經先開了，準備好後這堂課後面偵測到的臉才會生效。
+  $('groupPhotoBtn').style.display = S.faceEnabled ? '' : 'none';
   if(S.faceEnabled){
     ensureFaceModels().catch(function(e){ toast('人臉辨識模型載入失敗，本次僅能用卡片點名：'+(e&&e.message||e), 5500); });
     call('faceData', S.sheet).then(function(list){
