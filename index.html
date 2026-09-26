@@ -116,6 +116,8 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .regacts button:disabled{opacity:.45;cursor:not-allowed}
 .regcam{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
 .regcam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.regcam.flash::after{content:"";position:absolute;inset:0;background:#fff;animation:regflashfx .35s ease-out}
+@keyframes regflashfx{from{opacity:.85}to{opacity:0}}
 .regdots{display:flex;gap:6px;justify-content:center}
 .regdots i{width:11px;height:11px;border-radius:50%;background:var(--line);display:block}
 .regdots i.on{background:var(--ontime)}
@@ -337,7 +339,7 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
       <span class="lab">進階選項</span>
       <div class="togglebox">
         <div class="toggle">
-          <div class="tt"><b>即時輸入</b><span>每次刷卡立即寫入試算表，不等批次同步</span></div>
+          <div class="tt"><b>即時輸入</b><span>開啟：每次刷卡／刷臉立即寫入試算表。關閉：先累積，等按下「結束點名」才一次送出</span></div>
           <button type="button" class="switch" id="instantSwitch" role="switch" aria-checked="false"></button>
         </div>
         <div class="toggle">
@@ -450,17 +452,14 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
     </div>
 
     <div class="regstep" id="regStep3" style="display:none">
-      <div class="regcam"><video id="regVideo" playsinline muted autoplay></video></div>
-      <p class="hint" id="regHint">準備好後按下方按鈕拍攝</p>
+      <div class="regcam" id="regCamBox"><video id="regVideo" playsinline muted autoplay></video></div>
+      <p class="hint" id="regHint">準備中…</p>
       <div class="regdots" id="regDots"></div>
       <div class="regacts">
+        <button type="button" id="regRescan">重新掃描</button>
         <button type="button" id="regStep3Back">上一步</button>
-        <button type="button" id="regShoot">拍攝這一張</button>
-        <button type="button" id="regRetake">全部重拍</button>
       </div>
-      <div class="regacts">
-        <button type="button" id="regSubmit" class="pri" disabled>完成註冊</button>
-      </div>
+      <p class="status-line" id="regStatus3" style="margin:0"></p>
     </div>
 
     <div class="regstep" id="regDone" style="display:none">
@@ -1123,12 +1122,9 @@ $('regStep2Next').onclick=function(){
   var nm=$('regSignName').value.trim();
   if(!nm){ toast('請輸入簽署人姓名'); return; }
   Reg.signName=nm; Reg.signRole=$('regSignRole').value;
-  Reg.descriptors=[]; Reg.captured=0; renderRegDots();
-  $('regSubmit').disabled=true; $('regHint').textContent=REG_HINTS[0];
-  regShowStep(3);
-  regOpenCamera().catch(function(e){ $('regStatus').textContent='無法開啟鏡頭：'+(e&&e.message||e); });
+  regEnterStep3();
 };
-$('regStep3Back').onclick=function(){ regStopCamera(); regShowStep(2); };
+$('regStep3Back').onclick=function(){ regStopAutoCapture(); regStopCamera(); regShowStep(2); };
 function renderRegDots(){
   var box=$('regDots'); box.innerHTML='';
   for(var i=0;i<Reg.needed;i++){ var d=document.createElement('i'); if(i<Reg.captured) d.className='on'; box.appendChild(d); }
@@ -1139,25 +1135,53 @@ function regOpenCamera(){
     .then(function(s){ Reg.stream=s; $('regVideo').srcObject=s; return $('regVideo').play(); });
 }
 function regStopCamera(){ if(Reg.stream){ Reg.stream.getTracks().forEach(function(t){t.stop();}); Reg.stream=null; } }
-$('regShoot').onclick=function(){
-  $('regStatus').textContent='偵測中…';
-  ensureFaceModels().then(function(){
-    return faceapi.detectSingleFace($('regVideo'), new faceapi.TinyFaceDetectorOptions({inputSize:320, scoreThreshold:0.5}))
-      .withFaceLandmarks().withFaceDescriptor();
-  }).then(function(res){
-    if(!res){ $('regStatus').textContent='沒有偵測到臉，請正對鏡頭、光線充足再試一次'; return; }
-    Reg.descriptors.push(Array.prototype.slice.call(res.descriptor));
-    Reg.captured++; renderRegDots(); $('regStatus').textContent='';
-    if(Reg.captured>=Reg.needed){ $('regHint').textContent='拍攝完成，可以送出註冊了'; $('regSubmit').disabled=false; }
-    else $('regHint').textContent=REG_HINTS[Reg.captured] || REG_HINTS[0];
-  }).catch(function(e){ $('regStatus').textContent='人臉辨識模型載入失敗：'+(e&&e.message||e); });
-};
-$('regRetake').onclick=function(){
-  Reg.descriptors=[]; Reg.captured=0; renderRegDots(); $('regSubmit').disabled=true; $('regHint').textContent=REG_HINTS[0]; $('regStatus').textContent='';
-};
-$('regSubmit').onclick=function(){
-  if(!Reg.student || Reg.descriptors.length<Reg.needed) return;
-  $('regSubmit').disabled=true; $('regStatus').textContent='送出中…';
+function regFlashCam(){ var b=$('regCamBox'); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+
+/* 自動連拍：進入這一步就開鏡頭、載模型、開始自動偵測，拍滿 4 張後自動送出，
+   不需要老師或學生手動按「拍攝」，只要在鏡頭前依提示轉動臉部就好。 */
+var regCapturing=false, regCaptureRAF=null, regBusyDetect=false, regStableCount=0, regLastTick=0;
+var REG_CAPTURE_STABLE_FRAMES=3, REG_CAPTURE_INTERVAL=350;
+function regEnterStep3(){
+  Reg.descriptors=[]; Reg.captured=0; renderRegDots();
+  $('regHint').textContent='準備鏡頭中…'; $('regStatus3').textContent='';
+  regShowStep(3);
+  regOpenCamera().then(function(){
+    $('regHint').textContent='載入辨識模型中…（第一次使用會慢一點）';
+    return ensureFaceModels();
+  }).then(function(){
+    $('regHint').textContent=REG_HINTS[0];
+    regStartAutoCapture();
+  }).catch(function(e){ $('regHint').textContent='初始化失敗'; $('regStatus3').textContent=(e&&e.message||e); });
+}
+function regStartAutoCapture(){ regCapturing=true; regStableCount=0; regLastTick=0; regCaptureRAF=requestAnimationFrame(regCaptureTick); }
+function regStopAutoCapture(){ regCapturing=false; if(regCaptureRAF) cancelAnimationFrame(regCaptureRAF); }
+function regCaptureTick(t){
+  if(!regCapturing) return;
+  regCaptureRAF=requestAnimationFrame(regCaptureTick);
+  if(regBusyDetect || t-regLastTick<REG_CAPTURE_INTERVAL) return;
+  regLastTick=t; regBusyDetect=true;
+  faceapi.detectSingleFace($('regVideo'), new faceapi.TinyFaceDetectorOptions({inputSize:256, scoreThreshold:0.5}))
+    .withFaceLandmarks().withFaceDescriptor()
+    .then(function(res){
+      regBusyDetect=false;
+      if(!res){ regStableCount=0; $('regStatus3').textContent='沒有偵測到臉，請正對鏡頭、光線充足一點'; return; }
+      regStableCount++;
+      $('regStatus3').textContent = regStableCount<REG_CAPTURE_STABLE_FRAMES ? '偵測到臉，保持不動…' : '';
+      if(regStableCount<REG_CAPTURE_STABLE_FRAMES) return;
+      regStableCount=0;
+      Reg.descriptors.push(Array.prototype.slice.call(res.descriptor));
+      Reg.captured++; renderRegDots(); regFlashCam();
+      if(Reg.captured>=Reg.needed){
+        regStopAutoCapture();
+        $('regHint').textContent='拍攝完成，送出註冊中…';
+        regSubmitEnroll();
+      } else {
+        $('regHint').textContent=REG_HINTS[Reg.captured];
+      }
+    }).catch(function(){ regBusyDetect=false; });
+}
+$('regRescan').onclick=function(){ regStopAutoCapture(); regEnterStep3(); };
+function regSubmitEnroll(){
   call('faceEnroll', {
     sheet:Reg.sheet, row:Reg.student.row, seat:Reg.student.seat, name:Reg.student.name,
     descriptors:Reg.descriptors, consent:{name:Reg.signName, role:Reg.signRole, version:CONSENT_VERSION}, source:'teacher'
@@ -1166,14 +1190,17 @@ $('regSubmit').onclick=function(){
     S.faceCounts[Reg.sheet]=(S.faceCounts[Reg.sheet]||0)+1; if(S.sheet===Reg.sheet) renderClasses();
     $('regDoneMsg').textContent=pad(r.seat)+' '+r.name+' 已完成人臉註冊。';
     regShowStep(4);
-  }).catch(function(e){ $('regSubmit').disabled=false; $('regStatus').textContent='送出失敗：'+(e&&e.message||e); });
-};
+  }).catch(function(e){
+    $('regHint').textContent='送出失敗，請按下方重新掃描再試一次';
+    $('regStatus3').textContent=(e&&e.message||e);
+  });
+}
 $('regAnother').onclick=function(){
   Reg.student=null; Reg.descriptors=[]; Reg.captured=0; $('regStep1Next').disabled=true;
   $('regStudentSel').value=''; regShowStep(1);
 };
-$('regClose').onclick=function(){ regStopCamera(); $('regDlg').close(); };
-$('regDlg').addEventListener('close', regStopCamera);
+$('regClose').onclick=function(){ regStopAutoCapture(); regStopCamera(); $('regDlg').close(); };
+$('regDlg').addEventListener('close', function(){ regStopAutoCapture(); regStopCamera(); });
 
 function persist(){
   call('saveSettings', {sheet:S.sheet, late:S.late, absentAfter:S.absentAfter, cam:S.cam, instant:S.instant, bonusMode:S.bonusMode, faceEnabled:S.faceEnabled}).catch(function(){});
@@ -1468,14 +1495,17 @@ function flush(){
     setSync('err','寫入失敗，稍後重試');
   });
 }
-/* 即時輸入開著：每 1.2 秒巡一次（幾乎等於掃到就寫）。
-   即時輸入關著：拉長到每 5 秒才巡一次，讓佇列裡的卡片真的先累積起來批次送出，
-   兩種模式才會有實際感受得到的差異，不會不管開關都幾乎同時寫入。
+/* 即時輸入開著：每次刷卡／刷臉都會在 checkIn() 裡馬上呼叫 flush()，這裡的計時器只是
+   萬一那次送出失敗時的重試保險，所以還是保留一個短間隔（1.2 秒）。
+   即時輸入關著：完全不主動同步，佇列只會在按下「結束點名」時（stop() 裡）一次送出，
+   這樣「關閉＝等全部刷完、確認後再一次寫入試算表」才會是真的成立，不是原本那種
+   只是拉長到 5 秒還是照樣自動送出的假關閉。
    （手動加分永遠不走這個佇列，adjustBonus 每次點擊都直接送出，不受這個開關影響。） */
 var flushTimer=null;
 function scheduleFlush(){
-  if(flushTimer) clearTimeout(flushTimer);
-  flushTimer=setTimeout(function(){ flush(); scheduleFlush(); }, S.instant ? 1200 : 5000);
+  if(flushTimer){ clearTimeout(flushTimer); flushTimer=null; }
+  if(!S.instant) return; // 關閉時不排程任何自動同步，靜靜讓佇列累積，等 stop() 裡的 flush() 一次送出
+  flushTimer=setTimeout(function(){ flush(); scheduleFlush(); }, 1200);
 }
 scheduleFlush();
 window.addEventListener('beforeunload', function(e){ if(S.queue.length||S.inflight){ e.preventDefault(); e.returnValue=''; } });
@@ -1573,6 +1603,7 @@ function setInstant(v){
   $('instantSwitch').setAttribute('aria-checked', String(S.instant));
   $('instantBtn').setAttribute('aria-pressed', String(S.instant));
   scheduleFlush();
+  if(S.instant) flush(); // 切成開啟的當下，把佇列裡已經累積的也一併立刻送出，不用等下一次刷卡
   persist();
 }
 $('instantSwitch').onclick=function(){ setInstant(!S.instant); };
