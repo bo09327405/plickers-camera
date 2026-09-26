@@ -466,7 +466,7 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
 
 <dialog id="regDlg" aria-label="學生人臉註冊">
   <div class="regbody">
-    <div class="reghead"><h3>學生人臉註冊</h3><button type="button" class="regxbtn" id="regCloseX" aria-label="關閉，回到點名畫面">✕</button></div>
+    <div class="reghead"><h3 id="regDlgTitle">學生人臉註冊</h3><button type="button" class="regxbtn" id="regCloseX" aria-label="關閉，回到點名畫面">✕</button></div>
 
     <div class="regstep" id="regStep1">
       <p class="hint">選擇班級</p>
@@ -1129,7 +1129,7 @@ document.addEventListener('click', closeBonus);
  * ==================================================================== */
 var CONSENT_VERSION = 'v1'; // 要跟 Code.gs 裡的 CONSENT_VERSION 對應；改了同意書文字記得兩邊都更新
 var CONSENT_TEXT =
-'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
+'【表演藝術課-臉部辨識授權同意書】\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
@@ -1142,8 +1142,10 @@ var CONSENT_TEXT =
 var Reg = { classes:[], sheet:null, students:[], student:null, signName:'', signRole:'學生本人', stream:null, descriptors:[], captured:0, needed:4 };
 var REG_HINTS = ['請正臉看鏡頭','請將臉稍微轉向左邊','請將臉稍微轉向右邊','請正臉看鏡頭（最後一張）'];
 
+var REG_STEP_TITLES=['學生人臉註冊','閱讀並簽署同意書','臉部掃描','註冊完成'];
 function regShowStep(n){
   ['regStep1','regStep2','regStep3','regDone'].forEach(function(id,i){ $(id).style.display = (i+1===n) ? '' : 'none'; });
+  $('regDlgTitle').textContent = REG_STEP_TITLES[n-1] || '學生人臉註冊';
   $('regStatus').textContent='';
 }
 function regUpdateReregWarn(){
