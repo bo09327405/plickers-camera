@@ -118,6 +118,10 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .regcam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
 .regcam.flash::after{content:"";position:absolute;inset:0;background:#fff;animation:regflashfx .35s ease-out}
 @keyframes regflashfx{from{opacity:.85}to{opacity:0}}
+.regcamguide{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.regcamguide ellipse{fill:none;stroke:rgba(255,255,255,.6);stroke-width:1.6;stroke-dasharray:5 4;transition:stroke .15s,stroke-width .15s}
+.regcam.guide-ok .regcamguide ellipse{stroke:var(--ontime);stroke-dasharray:none;stroke-width:2.4}
+.regcam.guide-bad .regcamguide ellipse{stroke:var(--absent);stroke-dasharray:none;stroke-width:2.4}
 .regdots{display:flex;gap:6px;justify-content:center}
 .regdots i{width:11px;height:11px;border-radius:50%;background:var(--line);display:block}
 .regdots i.on{background:var(--ontime)}
@@ -452,7 +456,9 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
     </div>
 
     <div class="regstep" id="regStep3" style="display:none">
-      <div class="regcam" id="regCamBox"><video id="regVideo" playsinline muted autoplay></video></div>
+      <div class="regcam" id="regCamBox"><video id="regVideo" playsinline muted autoplay></video>
+        <svg class="regcamguide" viewBox="0 0 100 100" preserveAspectRatio="none"><ellipse cx="50" cy="48" rx="25" ry="40"/></svg>
+      </div>
       <p class="hint" id="regHint">準備中…</p>
       <div class="regdots" id="regDots"></div>
       <div class="regacts">
@@ -1052,7 +1058,7 @@ document.addEventListener('click', closeBonus);
  * ==================================================================== */
 var CONSENT_VERSION = 'v1'; // 要跟 Code.gs 裡的 CONSENT_VERSION 對應；改了同意書文字記得兩邊都更新
 var CONSENT_TEXT =
-'【表演藝術課人臉辨識點名同意書】\n\n'+
+'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
@@ -1124,7 +1130,7 @@ $('regStep2Next').onclick=function(){
   Reg.signName=nm; Reg.signRole=$('regSignRole').value;
   regEnterStep3();
 };
-$('regStep3Back').onclick=function(){ regStopAutoCapture(); regStopCamera(); regShowStep(2); };
+$('regStep3Back').onclick=function(){ regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){} regShowStep(2); };
 function renderRegDots(){
   var box=$('regDots'); box.innerHTML='';
   for(var i=0;i<Reg.needed;i++){ var d=document.createElement('i'); if(i<Reg.captured) d.className='on'; box.appendChild(d); }
@@ -1140,9 +1146,48 @@ function regFlashCam(){ var b=$('regCamBox'); b.classList.remove('flash'); void 
 /* 自動連拍：進入這一步就開鏡頭、載模型、開始自動偵測，拍滿 4 張後自動送出，
    不需要老師或學生手動按「拍攝」，只要在鏡頭前依提示轉動臉部就好。 */
 var regCapturing=false, regCaptureRAF=null, regBusyDetect=false, regStableCount=0, regLastTick=0;
-var REG_CAPTURE_STABLE_FRAMES=3, REG_CAPTURE_INTERVAL=350;
+var REG_CAPTURE_STABLE_FRAMES=4, REG_CAPTURE_INTERVAL=380, REG_CAPTURE_PAUSE_MS=2600;
+// 引導框：水平置中的橢圓形，寬高是鏡頭畫面的比例（不是像素），所以不同裝置的鏡頭畫面都適用。
+var REG_GUIDE={ wPct:0.50, hPct:0.80, yPct:0.08 };
+var REG_GUIDE_SIZE_MIN=0.66, REG_GUIDE_SIZE_MAX=1.42; // 臉框寬度 ÷ 引導框寬度，超出範圍視為太遠／太近
+var REG_GUIDE_CENTER_TOL=0.32;                        // 臉框中心偏離引導框中心的容許比例
+var REG_GUIDE_SCORE_MIN=0.72;                         // 偵測信心值門檻，太低視為可能有遮蔽物或光線不足
+var REG_GUIDE_ASPECT_MIN=0.58, REG_GUIDE_ASPECT_MAX=1.05; // 臉框寬高比，超出範圍視為角度異常／疑似遮蔽
+
+/* 語音指引：用瀏覽器內建的 Web Speech API，不用額外語音檔或函式庫；同一句話不會連續重複念。 */
+var regLastSpoken='';
+function regSpeak(text){
+  try{
+    if(!('speechSynthesis' in window) || !text) return;
+    if(regLastSpoken===text) return;
+    regLastSpoken=text;
+    speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(text); u.lang='zh-TW'; u.rate=1; u.pitch=1;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+/* 用臉框跟引導框的相對關係，估算「太遠／太近／沒置中／可能遮蔽／背景有其他人」。
+   這是根據偵測信心值＋框的大小比例／寬高比做的估算，不是真的語意層級判斷「有沒有戴口罩」，
+   極端情況不一定抓得到，但能擋掉大部分常見狀況。 */
+function regEvalGuide(faces, vw, vh){
+  var guideW=REG_GUIDE.wPct*vw, guideH=REG_GUIDE.hPct*vh;
+  var guideCx=vw/2, guideCy=(REG_GUIDE.yPct+REG_GUIDE.hPct/2)*vh;
+  if(!faces.length) return {ok:false, msg:'沒有偵測到臉，請將臉對準框內', voice:'請將臉對準框框中央'};
+  if(faces.length>1) return {ok:false, msg:'偵測到背景有其他人，請確保畫面中只有這位學生', voice:'畫面中出現其他人，請確認只有一個人入鏡'};
+  var box=faces[0].detection.box, score=faces[0].detection.score;
+  if(score<REG_GUIDE_SCORE_MIN) return {ok:false, msg:'偵測不夠清楚，請確認臉部沒有被口罩、瀏海或手部遮住', voice:'臉部可能被遮住，請移開遮蔽物'};
+  var aspect=box.width/box.height;
+  if(aspect<REG_GUIDE_ASPECT_MIN || aspect>REG_GUIDE_ASPECT_MAX) return {ok:false, msg:'偵測到臉部角度異常，請正對鏡頭、確認臉部完整入鏡', voice:'請正對鏡頭，確認臉部完整入鏡'};
+  var sizeRatio=box.width/guideW;
+  if(sizeRatio<REG_GUIDE_SIZE_MIN) return {ok:false, msg:'距離太遠，請靠近鏡頭一點，讓臉部符合框框大小', voice:'請再靠近鏡頭一點'};
+  if(sizeRatio>REG_GUIDE_SIZE_MAX) return {ok:false, msg:'距離太近，請離鏡頭遠一點', voice:'請離鏡頭遠一點'};
+  var cx=box.x+box.width/2, cy=box.y+box.height/2;
+  var dx=Math.abs(cx-guideCx)/guideW, dy=Math.abs(cy-guideCy)/guideH;
+  if(dx>REG_GUIDE_CENTER_TOL || dy>REG_GUIDE_CENTER_TOL) return {ok:false, msg:'請將臉對準框內置中', voice:'請將臉對準框框置中'};
+  return {ok:true, msg:'', voice:''};
+}
 function regEnterStep3(){
-  Reg.descriptors=[]; Reg.captured=0; renderRegDots();
+  Reg.descriptors=[]; Reg.captured=0; renderRegDots(); regLastSpoken='';
   $('regHint').textContent='準備鏡頭中…'; $('regStatus3').textContent='';
   regShowStep(3);
   regOpenCamera().then(function(){
@@ -1150,6 +1195,8 @@ function regEnterStep3(){
     return ensureFaceModels();
   }).then(function(){
     $('regHint').textContent=REG_HINTS[0];
+    $('regStatus3').textContent='請放輕鬆表情，眼睛看著鏡頭，不用做誇張表情';
+    regSpeak('請將臉對準框框，表情放輕鬆，眼睛看著鏡頭');
     regStartAutoCapture();
   }).catch(function(e){ $('regHint').textContent='初始化失敗'; $('regStatus3').textContent=(e&&e.message||e); });
 }
@@ -1160,23 +1207,39 @@ function regCaptureTick(t){
   regCaptureRAF=requestAnimationFrame(regCaptureTick);
   if(regBusyDetect || t-regLastTick<REG_CAPTURE_INTERVAL) return;
   regLastTick=t; regBusyDetect=true;
-  faceapi.detectSingleFace($('regVideo'), new faceapi.TinyFaceDetectorOptions({inputSize:256, scoreThreshold:0.5}))
-    .withFaceLandmarks().withFaceDescriptor()
-    .then(function(res){
+  var vw=$('regVideo').videoWidth, vh=$('regVideo').videoHeight;
+  if(!vw||!vh){ regBusyDetect=false; return; }
+  faceapi.detectAllFaces($('regVideo'), new faceapi.TinyFaceDetectorOptions({inputSize:256, scoreThreshold:0.4}))
+    .withFaceLandmarks().withFaceDescriptors()
+    .then(function(faces){
       regBusyDetect=false;
-      if(!res){ regStableCount=0; $('regStatus3').textContent='沒有偵測到臉，請正對鏡頭、光線充足一點'; return; }
+      var g=regEvalGuide(faces, vw, vh);
+      $('regCamBox').classList.toggle('guide-ok', g.ok);
+      $('regCamBox').classList.toggle('guide-bad', !g.ok);
+      if(!g.ok){ regStableCount=0; $('regStatus3').textContent=g.msg; regSpeak(g.voice); return; }
       regStableCount++;
-      $('regStatus3').textContent = regStableCount<REG_CAPTURE_STABLE_FRAMES ? '偵測到臉，保持不動…' : '';
+      $('regStatus3').textContent = regStableCount<REG_CAPTURE_STABLE_FRAMES ? '位置很好，保持不動…' : '';
       if(regStableCount<REG_CAPTURE_STABLE_FRAMES) return;
       regStableCount=0;
-      Reg.descriptors.push(Array.prototype.slice.call(res.descriptor));
+      Reg.descriptors.push(Array.prototype.slice.call(faces[0].descriptor));
       Reg.captured++; renderRegDots(); regFlashCam();
       if(Reg.captured>=Reg.needed){
         regStopAutoCapture();
-        $('regHint').textContent='拍攝完成，送出註冊中…';
+        $('regHint').textContent='拍攝完成，送出註冊中…'; $('regCamBox').classList.remove('guide-ok','guide-bad');
+        regSpeak('拍攝完成');
         regSubmitEnroll();
       } else {
+        // 拍完一張後先暫停偵測一段時間，給學生時間轉頭調整角度，
+        // 不然原本偵測是持續在跑，臉一穩定下來馬上就會拍下一張，根本來不及轉頭。
+        regStopAutoCapture();
         $('regHint').textContent=REG_HINTS[Reg.captured];
+        $('regStatus3').textContent='請依提示調整角度，'+(REG_CAPTURE_PAUSE_MS/1000)+' 秒後自動繼續拍攝…';
+        $('regCamBox').classList.remove('guide-ok','guide-bad');
+        regLastSpoken=''; regSpeak(REG_HINTS[Reg.captured]);
+        setTimeout(function(){
+          $('regStatus3').textContent='';
+          regStartAutoCapture();
+        }, REG_CAPTURE_PAUSE_MS);
       }
     }).catch(function(){ regBusyDetect=false; });
 }
@@ -1199,8 +1262,8 @@ $('regAnother').onclick=function(){
   Reg.student=null; Reg.descriptors=[]; Reg.captured=0; $('regStep1Next').disabled=true;
   $('regStudentSel').value=''; regShowStep(1);
 };
-$('regClose').onclick=function(){ regStopAutoCapture(); regStopCamera(); $('regDlg').close(); };
-$('regDlg').addEventListener('close', function(){ regStopAutoCapture(); regStopCamera(); });
+$('regClose').onclick=function(){ regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){} $('regDlg').close(); };
+$('regDlg').addEventListener('close', function(){ regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){} });
 
 function persist(){
   call('saveSettings', {sheet:S.sheet, late:S.late, absentAfter:S.absentAfter, cam:S.cam, instant:S.instant, bonusMode:S.bonusMode, faceEnabled:S.faceEnabled}).catch(function(){});
