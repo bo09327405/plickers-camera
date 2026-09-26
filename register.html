@@ -134,6 +134,9 @@ button.ghost{appearance:none;border:1.5px solid var(--line);background:#fff;heig
         </select>
       </div>
     </div>
+    <label class="agreerow"><input type="checkbox" id="ageConfirm">
+      <span>我確認：若已年滿 18 歲，由本人親自簽署；若未滿 18 歲，由家長或法定代理人簽署本同意書。</span>
+    </label>
     <div class="acts">
       <button class="go" id="step2Next">下一步：臉部掃描</button>
       <button class="ghost" id="step2Back">上一步</button>
@@ -216,8 +219,7 @@ var CONSENT_TEXT =
 '4. 利用對象：僅授課教師本人於點名系統中比對使用，不會提供第三人，也不會公開或用於其他用途。\n'+
 '5. 保管方式：以文字型態存放於學校內部試算表，非授課教師無法存取。\n'+
 '6. 您的權利：得隨時要求查詢、複製、停止蒐集或刪除已註冊的特徵資料，請洽授課教師；教師端亦可隨時將您的資料設為停用。\n'+
-'7. 本同意屬自願性質；不同意或事後撤回，均不影響原有課堂點名方式（教師仍會用其他方式為您點名），不會有任何不利處分。\n\n'+
-'若您已年滿 18 歲，請由本人親自閱讀並簽署；若未滿 18 歲，請由家長或法定代理人閱讀並簽署本同意書。';
+'7. 本同意屬自願性質；不同意或事後撤回，均不影響原有課堂點名方式（教師仍會用其他方式為您點名），不會有任何不利處分。';
 
 function pad(n){ return (n<10?'0':'')+n; }
 var toastT;
@@ -324,7 +326,7 @@ function unlockSpeech(){
   }catch(e){}
 }
 
-$('step1Next').onclick=function(){ if(!$('step1Next').disabled && Reg.student){ unlockSpeech(); $('consentText').textContent=CONSENT_TEXT; showStep(2); } };
+$('step1Next').onclick=function(){ if(!$('step1Next').disabled && Reg.student){ unlockSpeech(); $('consentText').textContent=CONSENT_TEXT; $('agree').checked=false; $('ageConfirm').checked=false; $('signName').value=''; $('signRole').value='學生本人'; showStep(2); } };
 
 function afterLogin(identity){
   IDENTITY=identity;
@@ -349,6 +351,7 @@ function afterLogin(identity){
 $('step2Back').onclick=function(){ showStep(1); };
 $('step2Next').onclick=function(){
   if(!$('agree').checked){ toast('請先勾選同意才能繼續'); return; }
+  if(!$('ageConfirm').checked){ toast('請先勾選年齡／簽署人確認'); return; }
   var nm=$('signName').value.trim();
   if(!nm){ toast('請輸入簽署人姓名'); return; }
   Reg.signName=nm; Reg.signRole=$('signRole').value;
