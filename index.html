@@ -110,6 +110,7 @@ select.inp{font-family:var(--sans);font-size:15px;font-weight:500}
 .consentbox{max-height:220px;overflow:auto;border:1.5px solid var(--line);border-radius:8px;padding:14px;font-size:13px;color:var(--ink-2);white-space:pre-wrap;background:var(--paper)}
 .agreerow{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}
 .agreerow input{margin-top:3px;flex:none}
+.reregwarn{border:1.5px solid var(--late);background:#FFF7E6;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .regacts{display:flex;gap:8px;margin-top:4px}
 .regacts button{flex:1;appearance:none;border:1.5px solid var(--line);background:#fff;height:46px;border-radius:8px;font-weight:700;cursor:pointer}
 .regacts button.pri{background:var(--ink);border-color:var(--ink);color:#fff}
@@ -429,6 +430,12 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
       <div class="field" id="regStudentField" style="display:none">
         <label for="regStudentSel">選擇座號姓名（請確認是本人）</label>
         <select class="inp" id="regStudentSel"></select>
+      </div>
+      <div id="regReregWarn" class="reregwarn" style="display:none">
+        <p class="hint" id="regReregText" style="margin:0;color:#8A5A00"></p>
+        <label class="agreerow"><input type="checkbox" id="regReregConfirm">
+          <span>我了解，確定要覆蓋重新註冊（原本的同意書紀錄仍會完整保留備查，只是比對用的臉部特徵資料會換成這次新拍攝的）。</span>
+        </label>
       </div>
       <div class="regacts">
         <button type="button" id="regStep1Next" class="pri" disabled>下一步：同意書</button>
@@ -1076,6 +1083,24 @@ function regShowStep(n){
   ['regStep1','regStep2','regStep3','regDone'].forEach(function(id,i){ $(id).style.display = (i+1===n) ? '' : 'none'; });
   $('regStatus').textContent='';
 }
+function regUpdateReregWarn(){
+  var at = Reg.student && Reg.student.registeredAt;
+  if(at){
+    $('regReregWarn').style.display='';
+    $('regReregText').textContent='⚠️ 這位同學已經在 '+at+' 完成過人臉註冊，重新註冊會覆蓋原本比對用的臉部特徵資料。';
+    $('regReregConfirm').checked=false;
+  } else {
+    $('regReregWarn').style.display='none';
+    $('regReregConfirm').checked=false;
+  }
+  regUpdateStep1NextEnabled();
+}
+function regUpdateStep1NextEnabled(){
+  var needsConfirm = Reg.student && Reg.student.registeredAt;
+  $('regStep1Next').disabled = !Reg.student || (needsConfirm && !$('regReregConfirm').checked);
+}
+$('regReregConfirm').onchange=regUpdateStep1NextEnabled;
+
 function regRenderClasses(){
   var box=$('regClasses'); box.innerHTML='';
   Reg.classes.forEach(function(c){
@@ -1085,7 +1110,7 @@ function regRenderClasses(){
     b.firstChild.textContent=c.sheet; b.lastChild.textContent=c.count+' 人';
     b.title=c.label;
     b.onclick=function(){
-      Reg.sheet=c.sheet; Reg.student=null; $('regStep1Next').disabled=true;
+      Reg.sheet=c.sheet; Reg.student=null; regUpdateReregWarn();
       regRenderClasses();
       $('regStudentField').style.display='none';
       $('regStatus').textContent='讀取名單中…';
@@ -1094,7 +1119,7 @@ function regRenderClasses(){
         var sel=$('regStudentSel'); sel.innerHTML='<option value="">請選擇…</option>';
         Reg.students.forEach(function(st){
           var o=document.createElement('option'); o.value=st.seat;
-          o.textContent=pad(st.seat)+' '+st.name; sel.appendChild(o);
+          o.textContent=pad(st.seat)+' '+st.name+(st.registeredAt?'（已註冊）':''); sel.appendChild(o);
         });
         $('regStudentField').style.display=''; $('regStatus').textContent='';
       }).catch(function(e){ $('regStatus').textContent='讀取名單失敗：'+(e&&e.message||e); });
@@ -1105,11 +1130,11 @@ function regRenderClasses(){
 $('regStudentSel').onchange=function(){
   var seat=+this.value;
   Reg.student = Reg.students.filter(function(st){ return st.seat===seat; })[0] || null;
-  $('regStep1Next').disabled=!Reg.student;
+  regUpdateReregWarn();
 };
 $('openRegBtn').onclick=function(){
   Reg.sheet=null; Reg.student=null; Reg.descriptors=[]; Reg.captured=0;
-  $('regStep1Next').disabled=true; $('regStudentField').style.display='none';
+  regUpdateReregWarn(); $('regStudentField').style.display='none';
   $('regConsentText').textContent=CONSENT_TEXT;
   $('regAgree').checked=false; $('regSignName').value=''; $('regSignRole').value='學生本人';
   regShowStep(1);
@@ -1121,7 +1146,7 @@ $('openRegBtn').onclick=function(){
   }
   if(typeof $('regDlg').showModal==='function') $('regDlg').showModal(); else $('regDlg').setAttribute('open','');
 };
-$('regStep1Next').onclick=function(){ if(Reg.student) regShowStep(2); };
+$('regStep1Next').onclick=function(){ if(!$('regStep1Next').disabled && Reg.student) regShowStep(2); };
 $('regStep2Back').onclick=function(){ regShowStep(1); };
 $('regStep2Next').onclick=function(){
   if(!$('regAgree').checked){ toast('請先勾選同意才能繼續'); return; }
@@ -1250,7 +1275,7 @@ function regSubmitEnroll(){
     descriptors:Reg.descriptors, consent:{name:Reg.signName, role:Reg.signRole, version:CONSENT_VERSION}, source:'teacher'
   }).then(function(r){
     regStopCamera();
-    S.faceCounts[Reg.sheet]=(S.faceCounts[Reg.sheet]||0)+1; if(S.sheet===Reg.sheet) renderClasses();
+    if(!Reg.student.registeredAt){ S.faceCounts[Reg.sheet]=(S.faceCounts[Reg.sheet]||0)+1; if(S.sheet===Reg.sheet) renderClasses(); }
     $('regDoneMsg').textContent=pad(r.seat)+' '+r.name+' 已完成人臉註冊。';
     regShowStep(4);
   }).catch(function(e){
@@ -1259,7 +1284,7 @@ function regSubmitEnroll(){
   });
 }
 $('regAnother').onclick=function(){
-  Reg.student=null; Reg.descriptors=[]; Reg.captured=0; $('regStep1Next').disabled=true;
+  Reg.student=null; Reg.descriptors=[]; Reg.captured=0; regUpdateReregWarn();
   $('regStudentSel').value=''; regShowStep(1);
 };
 $('regClose').onclick=function(){ regStopAutoCapture(); regStopCamera(); try{speechSynthesis.cancel();}catch(e){} $('regDlg').close(); };
