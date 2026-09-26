@@ -459,6 +459,9 @@ dialog::backdrop{background:rgba(10,12,18,.6)}
           </select>
         </div>
       </div>
+      <label class="agreerow"><input type="checkbox" id="regAgeConfirm">
+        <span>我確認：若已年滿 18 歲，由本人親自簽署；若未滿 18 歲，由家長或法定代理人簽署本同意書。</span>
+      </label>
       <div class="regacts">
         <button type="button" id="regStep2Back">上一步</button>
         <button type="button" id="regStep2Next" class="pri">下一步：臉部掃描</button>
@@ -1068,7 +1071,7 @@ document.addEventListener('click', closeBonus);
  * ==================================================================== */
 var CONSENT_VERSION = 'v1'; // 要跟 Code.gs 裡的 CONSENT_VERSION 對應；改了同意書文字記得兩邊都更新
 var CONSENT_TEXT =
-'【表演藝術課-臉部辨識授權同意書】\n\n'+
+'人臉辨識點名同意書（範本，請授課教師／學校依實際規定調整後使用，本文字僅供參考，非正式法律意見）\n\n'+
 '為提升課堂點名效率，授課教師擬於課堂點名時，透過鏡頭拍攝影像並即時擷取臉部特徵數值（不會儲存完整照片，只會儲存無法還原成影像的一組數字），用來自動比對出席學生身份。\n\n'+
 '1. 蒐集目的：課堂出缺勤點名紀錄之建立與查核。\n'+
 '2. 蒐集項目：臉部特徵數值（並非照片本身）、班級、座號、姓名、註冊時間。\n'+
@@ -1076,8 +1079,7 @@ var CONSENT_TEXT =
 '4. 利用對象：僅授課教師本人於點名系統中比對使用，不會提供第三人，也不會公開或用於其他用途。\n'+
 '5. 保管方式：以文字型態存放於學校內部試算表，非授課教師無法存取。\n'+
 '6. 您的權利：得隨時要求查詢、複製、停止蒐集或刪除已註冊的特徵資料，請洽授課教師；教師端亦可隨時將您的資料設為停用。\n'+
-'7. 本同意屬自願性質；不同意或事後撤回，均不影響原有課堂點名方式（教師仍會用其他方式為您點名），不會有任何不利處分。\n\n'+
-'若您已年滿 18 歲，請由本人親自閱讀並簽署；若未滿 18 歲，請由家長或法定代理人閱讀並簽署本同意書。';
+'7. 本同意屬自願性質；不同意或事後撤回，均不影響原有課堂點名方式（教師仍會用其他方式為您點名），不會有任何不利處分。';
 
 var Reg = { classes:[], sheet:null, students:[], student:null, signName:'', signRole:'學生本人', stream:null, descriptors:[], captured:0, needed:4 };
 var REG_HINTS = ['請正臉看鏡頭','請將臉稍微轉向左邊','請將臉稍微轉向右邊','請正臉看鏡頭（最後一張）'];
@@ -1139,7 +1141,7 @@ $('openRegBtn').onclick=function(){
   Reg.sheet=null; Reg.student=null; Reg.descriptors=[]; Reg.captured=0;
   regUpdateReregWarn(); $('regStudentField').style.display='none';
   $('regConsentText').textContent=CONSENT_TEXT;
-  $('regAgree').checked=false; $('regSignName').value=''; $('regSignRole').value='學生本人';
+  $('regAgree').checked=false; $('regAgeConfirm').checked=false; $('regSignName').value=''; $('regSignRole').value='學生本人';
   regShowStep(1);
   if(Reg.classes.length){ regRenderClasses(); }
   else {
@@ -1163,10 +1165,11 @@ function regUnlockSpeech(){
     speechSynthesis.speak(u);
   }catch(e){}
 }
-$('regStep1Next').onclick=function(){ if(!$('regStep1Next').disabled && Reg.student){ regUnlockSpeech(); regShowStep(2); } };
+$('regStep1Next').onclick=function(){ if(!$('regStep1Next').disabled && Reg.student){ regUnlockSpeech(); $('regAgree').checked=false; $('regAgeConfirm').checked=false; $('regSignName').value=''; $('regSignRole').value='學生本人'; regShowStep(2); } };
 $('regStep2Back').onclick=function(){ regShowStep(1); };
 $('regStep2Next').onclick=function(){
   if(!$('regAgree').checked){ toast('請先勾選同意才能繼續'); return; }
+  if(!$('regAgeConfirm').checked){ toast('請先勾選年齡／簽署人確認'); return; }
   var nm=$('regSignName').value.trim();
   if(!nm){ toast('請輸入簽署人姓名'); return; }
   Reg.signName=nm; Reg.signRole=$('regSignRole').value;
